@@ -168,6 +168,28 @@ if not exist "%PROJECT_ROOT%\.git" (
   pause
   goto menu
 )
+cd /d "%PROJECT_ROOT%"
+git remote get-url origin >nul 2>&1
+if errorlevel 1 (
+  echo.
+  echo No "origin" remote is set yet. You need your GitHub repo URL ^(HTTPS or SSH^).
+  echo On GitHub: open your repo - green "Code" button - copy the URL.
+  echo Then use menu option 3, or set remote now below.
+  echo.
+  set /p CP_OR=Set remote now? [y/N]: 
+  if /I "!CP_OR!"=="y" goto set_remote
+  if /I "!CP_OR!"=="yes" goto set_remote
+  echo Cancelled.
+  pause
+  goto menu
+)
+set "GIT_UN="
+set "GIT_UE="
+for /f "delims=" %%a in ('git config user.name 2^>nul') do set "GIT_UN=%%a"
+for /f "delims=" %%a in ('git config user.email 2^>nul') do set "GIT_UE=%%a"
+if "!GIT_UN!"=="" goto commit_push_warn_identity
+if "!GIT_UE!"=="" goto commit_push_warn_identity
+:commit_push_after_identity
 call :get_changelog_ver
 if defined CHG_VER (
   echo Suggested from CHANGELOG.md: !CHG_VER!
@@ -177,28 +199,73 @@ if defined CHG_VER (
   set /p MSG=Commit message: 
 )
 if "!MSG!"=="" echo Empty message. Cancelled. & pause & goto menu
-cd /d "%PROJECT_ROOT%"
+set "CUR_BRANCH="
+for /f "delims=" %%b in ('git branch --show-current 2^>nul') do set "CUR_BRANCH=%%b"
+if "!CUR_BRANCH!"=="" set "CUR_BRANCH=^(unknown^)"
+echo.
+echo Will run: git add -A  -^>  commit  -^>  push to origin ^(current branch: !CUR_BRANCH!^)
+set /p CP_GO=Proceed? [Y/n]: 
+if /I "!CP_GO!"=="n" echo Cancelled. & pause & goto menu
+if /I "!CP_GO!"=="no" echo Cancelled. & pause & goto menu
+git ls-remote --heads origin >nul 2>"%TEMP%\tcc-git-ls-remote.err"
+if errorlevel 1 (
+  echo.
+  echo Could not reach the remote ^(offline, firewall, DNS, or missing auth for ls-remote^).
+  echo You can fix credentials with option 11 or diagnosis with option 12.
+  set /p CP_TRY=Try push anyway? [Y/n]: 
+  if /I "!CP_TRY!"=="n" del /f /q "%TEMP%\tcc-git-ls-remote.err" 2>nul & pause & goto menu
+  if /I "!CP_TRY!"=="no" del /f /q "%TEMP%\tcc-git-ls-remote.err" 2>nul & pause & goto menu
+)
+del /f /q "%TEMP%\tcc-git-ls-remote.err" 2>nul
+echo.
 git add -A
 git diff --cached --quiet
 if errorlevel 1 (
-  git commit -m "!MSG!"
+  set "GIT_MENU_COMMIT_MSG=!MSG!"
+  set "COMMIT_MSG_FILE=%TEMP%\git-menu-commit-msg.txt"
+  powershell -NoProfile -Command "$p = Join-Path $env:TEMP 'git-menu-commit-msg.txt'; [System.IO.File]::WriteAllText($p, $env:GIT_MENU_COMMIT_MSG, [System.Text.UTF8Encoding]::new($false))"
+  git commit -F "!COMMIT_MSG_FILE!"
+  if errorlevel 1 (
+    del /f /q "!COMMIT_MSG_FILE!" 2>nul
+    echo.
+    echo Commit failed. Set user.name and user.email with option 7, or fix pre-commit hooks.
+    pause
+    goto menu
+  )
+  del /f /q "!COMMIT_MSG_FILE!" 2>nul
 ) else (
   echo Nothing to commit ^(no changes^).
 )
+echo.
 echo git push
-git push
+git push 2>"%TEMP%\tcc-git-push.err"
 if errorlevel 1 (
   echo.
-  echo Push failed. Try:  git push -u origin main
-  echo If remote has README/commits:  git pull --rebase origin main  then push again.
-  echo Unrelated histories:  git pull origin main --allow-unrelated-histories --no-edit
-  echo HTTPS: use a Personal Access Token, not your GitHub password.
-  echo First-time wizard option 8 assumes an empty repo — use Pull ^(4^) if remote is not empty.
-  echo After history rewrite: option 10 ^(force-with-lease^).
-  echo Need guided diagnosis? use option 12.
+  echo Push did not succeed. Tips:
+  echo   Try:  git push -u origin main
+  echo   Remote has commits:  git pull --rebase origin main  then push again.
+  echo   Unrelated histories:  git pull origin main --allow-unrelated-histories --no-edit
+  echo   HTTPS: use a Personal Access Token ^(option 11^), not your GitHub password.
+  echo   Diagnosis: option 12.
+  echo.
+  echo Last lines from Git:
+  powershell -NoProfile -Command "$p = Join-Path $env:TEMP 'tcc-git-push.err'; if (Test-Path $p) { Get-Content $p -Tail 12 }"
+  del /f /q "%TEMP%\tcc-git-push.err" 2>nul
+) else (
+  del /f /q "%TEMP%\tcc-git-push.err" 2>nul
 )
 pause
 goto menu
+
+:commit_push_warn_identity
+echo.
+echo Git user.name or user.email is not set. Commits will fail until you set them.
+echo Use menu option 7 ^(global name/email^).
+set /p CP_ID=Configure identity now? [y/N]: 
+if /I "!CP_ID!"=="y" goto identity
+if /I "!CP_ID!"=="yes" goto identity
+echo Continuing anyway ^(commit may fail^).
+goto commit_push_after_identity
 
 :diagnose_push_auth
 where git >nul 2>&1

@@ -145,6 +145,33 @@ cmd_status() {
 cmd_commit_push() {
   if [[ "$GIT_OK" -ne 1 ]]; then suggest_install_git; read -r -p "Press Enter..."; return; fi
   if [[ ! -d "$PROJECT_ROOT/.git" ]]; then echo ">>> Not a Git repo."; read -r -p "Press Enter..."; return; fi
+
+  if ! git -C "$PROJECT_ROOT" remote get-url origin >/dev/null 2>&1; then
+    echo ""
+    echo ">>> No \"origin\" remote is set yet. You need your GitHub repo URL (HTTPS or SSH)."
+    echo "    On GitHub: open your repo — green \"Code\" button — copy the URL."
+    echo "    Then use menu option (3), or set remote now."
+    read -r -p "Set remote now? [y/N]: " CP_OR
+    if [[ "${CP_OR,,}" == "y" || "${CP_OR,,}" == "yes" ]]; then
+      cmd_set_remote
+    fi
+    return
+  fi
+
+  GIT_UN="$(git -C "$PROJECT_ROOT" config --get user.name 2>/dev/null || true)"
+  GIT_UE="$(git -C "$PROJECT_ROOT" config --get user.email 2>/dev/null || true)"
+  if [[ -z "${GIT_UN// }" || -z "${GIT_UE// }" ]]; then
+    echo ""
+    echo ">>> Git user.name or user.email is not set. Commits will fail until you set them."
+    echo "    Use menu option (7) for global name/email."
+    read -r -p "Configure identity now? [y/N]: " CP_ID
+    if [[ "${CP_ID,,}" == "y" || "${CP_ID,,}" == "yes" ]]; then
+      cmd_identity
+      return
+    fi
+    echo ">>> Continuing anyway (commit may fail)."
+  fi
+
   SUG="$(changelog_version)"
   if [[ -n "$SUG" ]]; then
     echo "Suggested from CHANGELOG.md: $SUG"
@@ -154,24 +181,62 @@ cmd_commit_push() {
     read -r -p "Commit message: " MSG
   fi
   if [[ -z "${MSG// }" ]]; then echo "Empty message. Cancelled."; read -r -p "Press Enter..."; return; fi
+
+  CUR_BRANCH="$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev/null || true)"
+  [[ -z "${CUR_BRANCH// }" ]] && CUR_BRANCH="(unknown)"
+  echo ""
+  echo ">>> Will run: git add -A → commit → push to origin (current branch: $CUR_BRANCH)"
+  read -r -p "Proceed? [Y/n]: " CP_GO
+  if [[ "${CP_GO,,}" == "n" || "${CP_GO,,}" == "no" ]]; then echo "Cancelled."; read -r -p "Press Enter..."; return; fi
+
+  TMP_LS_ERR="$(mktemp)"
+  if ! git -C "$PROJECT_ROOT" ls-remote --heads origin >/dev/null 2>"$TMP_LS_ERR"; then
+    echo ""
+    echo ">>> Could not reach the remote (offline, firewall, DNS, or missing auth for ls-remote)."
+    echo "    Fix credentials with option (11) or diagnosis (12)."
+    read -r -p "Try push anyway? [Y/n]: " CP_TRY
+    if [[ "${CP_TRY,,}" == "n" || "${CP_TRY,,}" == "no" ]]; then
+      rm -f "$TMP_LS_ERR"
+      read -r -p "Press Enter to continue..."
+      return
+    fi
+  fi
+  rm -f "$TMP_LS_ERR"
+
+  COMMIT_MSG_FILE="$(mktemp)"
+  printf '%s' "$MSG" >"$COMMIT_MSG_FILE"
+
+  echo ""
   echo ">>> git add -A"
   git -C "$PROJECT_ROOT" add -A
   if git -C "$PROJECT_ROOT" diff --cached --quiet 2>/dev/null; then
     echo ">>> Nothing to commit (no changes)."
   else
-    git -C "$PROJECT_ROOT" commit -m "$MSG" || true
+    if ! git -C "$PROJECT_ROOT" commit -F "$COMMIT_MSG_FILE"; then
+      rm -f "$COMMIT_MSG_FILE"
+      echo ""
+      echo ">>> Commit failed. Set user.name and user.email with option (7), or fix pre-commit hooks."
+      read -r -p "Press Enter to continue..."
+      return
+    fi
   fi
+  rm -f "$COMMIT_MSG_FILE"
+
+  TMP_PUSH_ERR="$(mktemp)"
   echo ">>> git push"
-  git -C "$PROJECT_ROOT" push || {
+  if ! git -C "$PROJECT_ROOT" push 2>"$TMP_PUSH_ERR"; then
     echo ""
-    echo ">>> Push failed. Common cases:"
+    echo ">>> Push did not succeed. Tips:"
     echo "    • First push / no upstream:  git push -u origin main"
     echo "    • GitHub repo already has README/commits:  git pull --rebase origin main  then push again"
     echo "    • 'Unrelated histories':  git pull origin main --allow-unrelated-histories --no-edit"
     echo "    • HTTPS auth: use a token (option 11), not your password."
-    echo "    • After history rewrite: option (10) force-with-lease (careful)."
-    echo "    • Need guided diagnosis? use option (12)."
-  }
+    echo "    • Diagnosis: option (12)."
+    echo ""
+    echo ">>> Last lines from Git:"
+    tail -n 12 "$TMP_PUSH_ERR" 2>/dev/null || true
+  fi
+  rm -f "$TMP_PUSH_ERR"
   read -r -p "Press Enter to continue..."
 }
 

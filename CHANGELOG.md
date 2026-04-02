@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, move items under a dated version section and bump `APP_VERSION` in `app_version.py`.
 
+## [0.3.5] - 2026-04-02
+
+### Changed
+
+- **Git helper scripts** (`scripts/git-hub-menu.bat`, `scripts/git-hub-menu.sh`): option **6 — Save to GitHub** now checks for `origin` and user identity first, asks **Proceed?** before `git add`, optionally warns when `git ls-remote` fails (offline/auth), commits via **`-F`** message file (UTF-8 on Windows), skips **push** after a failed commit, and shows only the **last lines** of push errors plus tips (options 4, 11, 12).
+
 ## [0.3.4] - 2026-04-02
 
 ### Fixed

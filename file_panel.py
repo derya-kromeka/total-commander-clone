@@ -17,7 +17,6 @@ from datetime import datetime
 # Pattern for splitting names into text vs digit runs (natural sort).
 _NATURAL_SORT_SPLIT = re.compile(r"(\d+)")
 
-
 # ------------------------------------------------------------
 # Helper: natural_sort_key
 # Purpose: Sort key so embedded numbers compare numerically
