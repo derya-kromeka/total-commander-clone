@@ -4,6 +4,8 @@ Provides a modern, flat dark theme using Qt Style Sheets (QSS).
 Color palette inspired by Catppuccin Mocha.
 """
 
+from PyQt5.QtWidgets import QStyleFactory
+
 # ------------------------------------------------------------
 # Color Constants
 # ------------------------------------------------------------
@@ -679,3 +681,29 @@ def getDarkThemeStylesheet(base_path=None):
         color: {c['text']};
     }}
     """
+
+
+def applyTheme(app, theme_mode):
+    mode = (theme_mode or "dark").lower()
+
+    if mode == "dark":
+        app.setStyleSheet(getDarkThemeStylesheet())
+        return
+
+    app.setStyleSheet("")
+
+    if mode == "light":
+        fusion_style = QStyleFactory.create("Fusion")
+        if fusion_style is not None:
+            app.setStyle(fusion_style)
+            app.setPalette(fusion_style.standardPalette())
+        return
+
+    system_style_name = getattr(app, "_system_style_name", "")
+    if system_style_name:
+        system_style = QStyleFactory.create(system_style_name)
+        if system_style is not None:
+            app.setStyle(system_style)
+    system_palette = getattr(app, "_system_palette", None)
+    if system_palette is not None:
+        app.setPalette(system_palette)

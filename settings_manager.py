@@ -15,6 +15,7 @@ import os
 DEFAULT_SETTINGS = {
     "show_hidden_files": False,
     "confirm_delete": True,
+    "theme_mode": "dark",
     "default_left_path": "",
     "default_right_path": "",
     "column_widths": {
