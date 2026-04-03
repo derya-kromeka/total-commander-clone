@@ -6,23 +6,22 @@ REM Project root: one folder above this script, OR GIT_MENU_PROJECT_ROOT, OR %%1
 REM Run from any folder: full path to this .bat (no cd needed).
 
 set "PROJECT_ROOT="
+REM Resolve paths with FOR — not "cd" + %%CD%% inside (...) blocks, which breaks:
+REM %%CD%% expands before "cd" runs, so PROJECT_ROOT could stay the launch folder (e.g. scripts\).
 if defined GIT_MENU_PROJECT_ROOT (
   if exist "%GIT_MENU_PROJECT_ROOT%\" (
-    cd /d "%GIT_MENU_PROJECT_ROOT%"
-    set "PROJECT_ROOT=%CD%"
+    for %%I in ("%GIT_MENU_PROJECT_ROOT%\.") do set "PROJECT_ROOT=%%~fI"
   )
 )
 if not defined PROJECT_ROOT (
   if not "%~1"=="" (
     if exist "%~f1\" (
-      cd /d "%~f1"
-      set "PROJECT_ROOT=%CD%"
+      for %%I in ("%~f1\.") do set "PROJECT_ROOT=%%~fI"
     )
   )
 )
 if not defined PROJECT_ROOT (
-  cd /d "%~dp0.."
-  set "PROJECT_ROOT=%CD%"
+  for %%I in ("%~dp0..") do set "PROJECT_ROOT=%%~fI"
 )
 
 :menu

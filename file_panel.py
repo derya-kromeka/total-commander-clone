@@ -105,6 +105,41 @@ def getFileTypeDescription(file_path, is_dir):
 
 
 # ============================================================
+# Class: DriveLineEdit
+# Purpose: Embedded editor for the drive QComboBox; clicking the
+#          letter/field opens the dropdown (default Qt only opens
+#          from the combo's arrow sub-control).
+# ============================================================
+class DriveLineEdit(QLineEdit):
+
+    def __init__(self, combo, parent=None):
+        super().__init__(parent)
+        self._drive_combo = combo
+
+    def mousePressEvent(self, event):
+        if (
+            event.button() == Qt.LeftButton
+            and self._drive_combo is not None
+            and self._drive_combo.isVisible()
+        ):
+            self._drive_combo.showPopup()
+        super().mousePressEvent(event)
+
+
+# ============================================================
+# Class: DrivePickerCombo
+# Purpose: Drive QComboBox that opens the list on any left-click on
+#          the widget (e.g. drop-down button area inside the control).
+# ============================================================
+class DrivePickerCombo(QComboBox):
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self.isVisible():
+            self.showPopup()
+        super().mousePressEvent(event)
+
+
+# ============================================================
 # Class: FileSystemModel
 # Purpose: Custom QAbstractTableModel that reads a directory
 #          and presents its contents as table rows with columns
@@ -787,15 +822,17 @@ class FilePanel(QWidget):
         self._btn_home.setText("\U0001F3E0")
         self._btn_home.clicked.connect(self._goHome)
 
-        self._drive_combo = QComboBox()
+        self._drive_combo = DrivePickerCombo()
         self._drive_combo.setObjectName("driveCombo")
         self._drive_combo.setToolTip("Switch drive")
         self._drive_combo.setFixedSize(58, NAV_BAR_HEIGHT)
         self._drive_combo.setMinimumContentsLength(2)
         self._drive_combo.setEditable(True)
-        self._drive_combo.lineEdit().setReadOnly(True)
-        self._drive_combo.lineEdit().setAlignment(Qt.AlignCenter)
-        self._drive_combo.lineEdit().setFrame(False)
+        drive_line_edit = DriveLineEdit(self._drive_combo, self._drive_combo)
+        drive_line_edit.setReadOnly(True)
+        drive_line_edit.setAlignment(Qt.AlignCenter)
+        drive_line_edit.setFrame(False)
+        self._drive_combo.setLineEdit(drive_line_edit)
         drives = getWindowsDrives()
         if drives:
             self._drive_combo.addItems(drives)

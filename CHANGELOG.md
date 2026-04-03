@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, move items under a dated version section and bump `APP_VERSION` in `app_version.py`.
 
+## [0.3.6] - 2026-04-02
+
+### Changed
+
+- **Drive picker**: left-click on the drive letter / combo field opens the drive list (same as the ▼ control), not only the separate arrow button.
+
 ## [0.3.5] - 2026-04-02
 
 ### Changed
