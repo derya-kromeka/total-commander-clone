@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, move items under a dated version section and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.9] - 2026-04-07
+
+### Changed
+
+- **Windows `git-hub-menu.bat`**: Main menu shows a short **repo summary** (origin URL, commit name/email, HTTPS token file). **Option 6** (save/commit/push), **4** (pull), **8** (first-time wizard), and **10** (force push) end with **SUCCESS** or **FAILED** asterisk banners. Clearer text when there is nothing to commit; first-time wizard uses a reliable `.gitkeep` and can fall back to `git commit --allow-empty` instead of the vague “add project files” message.
+
 ## [0.4.8] - 2026-04-07
 
 ### Added

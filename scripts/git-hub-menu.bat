@@ -34,13 +34,7 @@ echo   This script:  %~f0
 echo ==========================================
 echo.
 
-where git >nul 2>&1
-if errorlevel 1 (
-  echo   Git: NOT FOUND - use option 1
-) else (
-  for /f "delims=" %%v in ('git --version') do echo   %%v
-)
-echo.
+call :print_menu_context
 echo   1 - Check Git / install instructions
 echo   2 - Init repository here ^(git init, branch main^)
 echo   3 - Set or change remote origin ^(GitHub URL^)
@@ -147,6 +141,11 @@ if not exist "%PROJECT_ROOT%\.git" (
 cd /d "%PROJECT_ROOT%"
 echo git pull --rebase
 git pull --rebase
+if errorlevel 1 (
+  call :banner_fail
+) else (
+  call :banner_success
+)
 echo git status
 git status -sb
 pause
@@ -234,12 +233,24 @@ if errorlevel 1 (
     del /f /q "!COMMIT_MSG_FILE!" 2>nul
     echo.
     echo Commit failed. Set user.name and user.email with option 7, or fix pre-commit hooks.
+    call :banner_fail
     pause
     goto menu
   )
   del /f /q "!COMMIT_MSG_FILE!" 2>nul
 ) else (
-  echo Nothing to commit ^(no changes^).
+  echo No new changes to commit ^(nothing different from your last commit^).
+  echo That usually means everything is already saved in Git, or files are outside this folder.
+  git rev-parse HEAD >nul 2>&1
+  if errorlevel 1 (
+    echo.
+    echo You have no commits yet. Git only tracks files inside this folder:
+    echo   %PROJECT_ROOT%
+    echo Add or save your project files here, then run option 6 again ^(or use option 8^).
+    call :banner_fail
+    pause
+    goto menu
+  )
 )
 echo.
 echo git push
@@ -256,8 +267,10 @@ if errorlevel 1 (
   echo Last lines from Git:
   powershell -NoProfile -Command "$p = Join-Path $env:TEMP 'tcc-git-push.err'; if (Test-Path $p) { Get-Content $p -Tail 12 }"
   del /f /q "%TEMP%\tcc-git-push.err" 2>nul
+  call :banner_fail
 ) else (
   del /f /q "%TEMP%\tcc-git-push.err" 2>nul
+  call :banner_success
 )
 pause
 goto menu
@@ -364,7 +377,12 @@ if not "!CONF!"=="YES" echo Cancelled. & pause & goto menu
 cd /d "%PROJECT_ROOT%"
 echo git push --force-with-lease origin main
 git push --force-with-lease origin main
-if errorlevel 1 echo Fix errors above ^(auth, branch name^).
+if errorlevel 1 (
+  echo Fix errors above ^(auth, branch name^).
+  call :banner_fail
+) else (
+  call :banner_success
+)
 pause
 goto menu
 
@@ -428,14 +446,30 @@ if defined CHG_VER (
 git add -A
 git diff --cached --quiet
 if errorlevel 1 goto first_commit_done
-echo No changes yet - creating .gitkeep so the first commit works.
-if not exist "%PROJECT_ROOT%\.gitkeep" (echo. > "%PROJECT_ROOT%\.gitkeep")
+echo No new changes to stage ^(nothing different from what Git already has^).
+echo If this is your first commit and the folder looks empty to Git, we add a tiny .gitkeep file.
+if not exist "%PROJECT_ROOT%\.gitkeep" (
+  powershell -NoProfile -Command "Set-Content -LiteralPath (Join-Path '%PROJECT_ROOT%' '.gitkeep') -Encoding utf8 -Value '# Placeholder so the first commit has a file. You can delete this after real files are tracked.'"
+)
 git add -A
 git diff --cached --quiet
 if errorlevel 1 (
   git commit -m "!MSG!"
-) else (
-  echo Still nothing to commit. Add project files, then use option 6.
+  goto first_push
+)
+git rev-parse HEAD >nul 2>&1
+if not errorlevel 1 (
+  echo.
+  echo Your repo already has commits ^(everything may already be saved^).
+  echo Use option 6 when you change files, or option 4 to pull from GitHub.
+  call :banner_success
+  pause
+  goto menu
+)
+echo Creating an empty first commit ^(allowed by Git^) so you can push to GitHub...
+git commit --allow-empty -m "!MSG!"
+if errorlevel 1 (
+  call :banner_fail
   pause
   goto menu
 )
@@ -464,8 +498,11 @@ git push -u origin main
 if errorlevel 1 (
   echo.
   echo Push failed. Try: git pull --rebase origin main
-  echo Then push again. HTTPS needs a token ^(see git-hub-menu.sh option 11 on Git Bash^).
+  echo Then push again. HTTPS needs a token ^(option 11 on this menu^).
   echo Unrelated histories: git pull origin main --allow-unrelated-histories --no-edit
+  call :banner_fail
+) else (
+  call :banner_success
 )
 pause
 goto menu
@@ -486,6 +523,63 @@ goto menu
 echo Git not found. Use option 1 for install links.
 pause
 goto menu
+
+:banner_success
+echo.
+echo **********************************************************************
+echo *  SUCCESS                                                           *
+echo **********************************************************************
+echo.
+exit /b 0
+
+:banner_fail
+echo.
+echo **********************************************************************
+echo *  FAILED                                                            *
+echo **********************************************************************
+echo.
+exit /b 0
+
+REM Summary under the menu: origin, identity, HTTPS token file ^(no network test^).
+:print_menu_context
+set "CTX_ORIG="
+set "CTX_UN="
+set "CTX_UE="
+where git >nul 2>&1
+if errorlevel 1 (
+  echo   Git: NOT FOUND - use option 1
+  exit /b 0
+)
+for /f "delims=" %%v in ('git --version') do echo   %%v
+if not exist "%PROJECT_ROOT%\.git" (
+  echo   ^(This folder is not a Git repo yet — use option 2^)
+  exit /b 0
+)
+echo   --- This repo ^(quick summary^) ---
+for /f "delims=" %%u in ('git -C "%PROJECT_ROOT%" remote get-url origin 2^>nul') do set "CTX_ORIG=%%u"
+if "!CTX_ORIG!"=="" (
+  echo   origin:        ^(not set — use option 3^)
+) else (
+  echo   origin:        !CTX_ORIG!
+)
+for /f "delims=" %%a in ('git -C "%PROJECT_ROOT%" config user.name 2^>nul') do set "CTX_UN=%%a"
+for /f "delims=" %%a in ('git -C "%PROJECT_ROOT%" config user.email 2^>nul') do set "CTX_UE=%%a"
+if "!CTX_UN!"=="" (
+  echo   commit name:   ^(not set — option 7^)
+) else (
+  echo   commit name:   !CTX_UN!
+)
+if "!CTX_UE!"=="" (
+  echo   commit email:  ^(not set — option 7^)
+) else (
+  echo   commit email:  !CTX_UE!
+)
+if exist "%PROJECT_ROOT%\.git\gh-credential-store" (
+  echo   HTTPS token:   saved in this repo ^(for HTTPS only; option 11^)
+) else (
+  echo   HTTPS token:   not saved here ^(if HTTPS asks for a password, use option 11^)
+)
+exit /b 0
 
 REM First ## [X.Y.Z] in CHANGELOG.md that is not [Unreleased] (Keep a Changelog).
 :get_changelog_ver
