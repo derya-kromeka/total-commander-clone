@@ -376,26 +376,8 @@ if not exist "%PROJECT_ROOT%\.git" (
   pause
   goto menu
 )
-cls
-echo ========== GitHub HTTPS - Personal Access Token ==========
-echo.
-echo GitHub does not accept your account password for git over HTTPS.
-echo Create a token and save it for this repo only.
-echo.
-echo A) CLASSIC: https://github.com/settings/tokens
-echo    Generate new token ^(classic^) - scope: repo
-echo.
-echo B) FINE-GRAINED: https://github.com/settings/personal-access-tokens/new
-echo    Contents: Read and write; Metadata: Read
-echo.
-echo Stored in: %PROJECT_ROOT%\.git\gh-credential-store ^(never committed^)
-echo.
-if exist "%PROJECT_ROOT%\scripts\save-github-token.ps1" (
-  cd /d "%PROJECT_ROOT%"
-  powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\scripts\save-github-token.ps1"
-) else (
-  echo Missing scripts\save-github-token.ps1 - use Git Bash and git-hub-menu.sh option 11.
-)
+cd /d "%PROJECT_ROOT%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\scripts\save-github-token.ps1"
 pause
 goto menu
 

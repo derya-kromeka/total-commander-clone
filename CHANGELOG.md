@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, move items under a dated version section and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.8] - 2026-04-07
+
+### Added
+
+- **Windows Git helper**: `scripts/save-github-token.ps1` — guided GitHub HTTPS Personal Access Token setup (opens token pages on request, saves repo-local credentials, tests with `git ls-remote`, SUCCESS/FAILED banners). Used from `git-hub-menu.bat` option 11.
+
 ## [0.4.7] - 2026-04-07
 
 ### Added
