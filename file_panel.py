@@ -751,6 +751,7 @@ class FileTableView(QTableView):
     slowClickRenameRequested = pyqtSignal()
     emptyAreaPressed = pyqtSignal()
     panelPressed = pyqtSignal()
+    viewportResized = pyqtSignal()
 
     RENAME_CLICK_DELAY_MS = 600
 
@@ -796,6 +797,10 @@ class FileTableView(QTableView):
         header.setSectionResizeMode(QHeaderView.Interactive)
         header.setSectionsMovable(False)
         header.setHighlightSections(False)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.viewportResized.emit()
 
     # --------------------------------------------------------
     # Slow-click-to-rename logic:
@@ -1072,6 +1077,9 @@ class FilePanel(QWidget):
         self._rename_edit = None
         self._scan_thread = None
         self._scan_progress = None
+        self._column_width_clamping = False
+        self._column_width_locked = {k: False for k in self.COLUMN_VISIBILITY_KEYS}
+        self._locked_column_width_px = {}
 
         self._initUI()
         self._connectSignals()
@@ -1342,7 +1350,6 @@ class FilePanel(QWidget):
         self._frame = self
         self._updateFrameStyle()
         self._updateFilterPlaceholder()
-        self._updateColumnStretchBehavior()
 
     # --------------------------------------------------------
     # Column width persistence (first three columns; settings.json)
@@ -1350,19 +1357,186 @@ class FilePanel(QWidget):
     # --------------------------------------------------------
     COLUMN_WIDTH_KEYS = ("name", "size", "type")
     COLUMN_VISIBILITY_KEYS = ("name", "size", "type", "date_modified")
+    # Minimum column width as a fraction of table viewport (sum of mins must fit in vw).
+    COLUMN_VIEWPORT_MIN_FRACTION = 0.05
 
     def _updateColumnStretchBehavior(self):
         """
-        Make the rightmost visible column fill the remaining table width.
-        Other columns stay interactive so user-resized widths still work.
+        Use Interactive resize for all columns; widths are set explicitly by
+        _normalizeColumnWidthsForViewport so total width matches the viewport.
         """
         hdr = self._table.horizontalHeader()
         n = self._source_model.columnCount()
-        visible = [c for c in range(n) if not self._table.isColumnHidden(c)]
         hdr.setStretchLastSection(False)
         for col in range(n):
-            mode = QHeaderView.Stretch if visible and col == visible[-1] else QHeaderView.Interactive
-            hdr.setSectionResizeMode(col, mode)
+            hdr.setSectionResizeMode(col, QHeaderView.Interactive)
+
+    def _columnKeyAt(self, logical_index):
+        """Logical column index -> persistence key (name/size/type/date_modified)."""
+        keys = self.COLUMN_VISIBILITY_KEYS
+        if 0 <= logical_index < len(keys):
+            return keys[logical_index]
+        return None
+
+    def getColumnWidthLockState(self):
+        """Return locked flags and pixel widths for persistence."""
+        locked = {
+            k: bool(self._column_width_locked.get(k))
+            for k in self.COLUMN_VISIBILITY_KEYS
+        }
+        widths = {
+            k: int(self._locked_column_width_px[k])
+            for k in self.COLUMN_VISIBILITY_KEYS
+            if self._column_width_locked.get(k) and k in self._locked_column_width_px
+        }
+        return {"column_width_locked": locked, "locked_column_widths": widths}
+
+    def applyColumnWidthLockState(self, data):
+        """Restore column lock flags and stored widths from panel state."""
+        if not data:
+            return
+        locked_in = data.get("column_width_locked") or {}
+        widths_in = data.get("locked_column_widths") or {}
+        for k in self.COLUMN_VISIBILITY_KEYS:
+            if k in locked_in:
+                self._column_width_locked[k] = bool(locked_in[k])
+            else:
+                self._column_width_locked[k] = False
+        self._locked_column_width_px.clear()
+        for k, w in widths_in.items():
+            if k in self.COLUMN_VISIBILITY_KEYS and isinstance(w, (int, float)) and w > 0:
+                self._locked_column_width_px[k] = int(w)
+
+    def _setColumnWidthLock(self, logical_index, locked):
+        """Lock or unlock column width; when locking, store current pixel width."""
+        key = self._columnKeyAt(logical_index)
+        if not key:
+            return
+        self._column_width_locked[key] = bool(locked)
+        if locked:
+            self._locked_column_width_px[key] = max(
+                1, self._table.columnWidth(logical_index)
+            )
+        else:
+            self._locked_column_width_px.pop(key, None)
+        self._normalizeColumnWidthsForViewport()
+
+    def _normalizeColumnWidthsForViewport(self):
+        """
+        Enforce: sum of visible column widths <= viewport width; each visible
+        column >= max(5% of viewport, 24px) when possible. Locked columns keep
+        their stored width when possible; slack is taken from flexible columns
+        first, then locked columns only if necessary.
+        """
+        if self._column_width_clamping:
+            return
+        vw = max(1, self._table.viewport().width())
+        hdr = self._table.horizontalHeader()
+        n = self._source_model.columnCount()
+        keys = self.COLUMN_VISIBILITY_KEYS
+        visible = [c for c in range(n) if not self._table.isColumnHidden(c)]
+        m = len(visible)
+        if m == 0:
+            return
+
+        pct_min = max(1, int(round(vw * self.COLUMN_VIEWPORT_MIN_FRACTION)))
+        min_each = max(24, pct_min)
+        if m * min_each > vw:
+            min_each = max(1, vw // m)
+        hdr.setMinimumSectionSize(min_each)
+
+        locked_set = set()
+        for c in visible:
+            k = self._columnKeyAt(c)
+            if k and self._column_width_locked.get(k):
+                locked_set.add(c)
+
+        flex = [c for c in visible if c not in locked_set]
+
+        w = {}
+        for c in visible:
+            w[c] = max(min_each, self._table.columnWidth(c))
+        for c in locked_set:
+            k = keys[c]
+            px = self._locked_column_width_px.get(k)
+            if px is not None:
+                w[c] = max(min_each, int(px))
+
+        def total_width():
+            return sum(w[c] for c in visible)
+
+        total = total_width()
+        if total > vw:
+            sum_l = sum(w[c] for c in locked_set)
+            sum_f = sum(w[c] for c in flex)
+            min_flex_total = len(flex) * min_each
+
+            if not flex:
+                if total > 0:
+                    factor = vw / total
+                    for c in visible:
+                        w[c] = max(min_each, int(w[c] * factor))
+                    drift = vw - sum(w[c] for c in visible)
+                    if drift != 0:
+                        w[visible[-1]] = max(min_each, w[visible[-1]] + drift)
+            else:
+                max_lock_sum = max(0, vw - min_flex_total)
+                if sum_l > max_lock_sum and locked_set:
+                    factor = max_lock_sum / sum_l if sum_l else 0
+                    for c in locked_set:
+                        w[c] = max(min_each, int(w[c] * factor))
+                    sum_l = sum(w[c] for c in locked_set)
+
+                rem = vw - sum_l
+                sum_f = sum(w[c] for c in flex)
+                if rem < min_flex_total:
+                    base = rem // len(flex)
+                    rmd = rem % len(flex)
+                    for i, c in enumerate(flex):
+                        w[c] = max(1, base + (1 if i < rmd else 0))
+                elif sum_f > 0:
+                    factor = rem / sum_f
+                    for c in flex:
+                        w[c] = max(min_each, int(w[c] * factor))
+                    drift = rem - sum(w[c] for c in flex)
+                    if drift != 0:
+                        w[flex[-1]] = max(min_each, w[flex[-1]] + drift)
+
+            while total_width() > vw:
+                pool = [c for c in flex if w[c] > min_each]
+                if not pool:
+                    pool = [c for c in locked_set if w[c] > min_each]
+                if not pool:
+                    pool = [c for c in visible if w[c] > 1]
+                if not pool:
+                    break
+                w[max(pool, key=lambda x: w[x])] -= 1
+
+        total = total_width()
+        if total < vw:
+            extra = vw - total
+            if flex:
+                w[flex[-1]] += extra
+            else:
+                w[visible[-1]] += extra
+        elif total > vw:
+            w[visible[-1]] -= total - vw
+            w[visible[-1]] = max(min_each, w[visible[-1]])
+
+        self._column_width_clamping = True
+        try:
+            hdr.blockSignals(True)
+            for c in visible:
+                self._table.setColumnWidth(c, max(1, w[c]))
+        finally:
+            hdr.blockSignals(False)
+            self._column_width_clamping = False
+
+        for c in locked_set:
+            k = keys[c]
+            self._locked_column_width_px[k] = self._table.columnWidth(c)
+
+        self._updateColumnStretchBehavior()
 
     def applyColumnVisibility(self, vis_dict):
         """Show/hide columns from saved state (keys: name, size, type, date_modified)."""
@@ -1374,7 +1548,7 @@ class FilePanel(QWidget):
             v = vis_dict.get(key)
             if v is not None:
                 self._table.setColumnHidden(col, not bool(v))
-        self._updateColumnStretchBehavior()
+        self._normalizeColumnWidthsForViewport()
 
     def getColumnVisibility(self):
         """Return visibility flags for each column."""
@@ -1394,7 +1568,7 @@ class FilePanel(QWidget):
             w = widths_dict.get(key)
             if w is not None and isinstance(w, (int, float)) and w > 0:
                 self._table.setColumnWidth(col, int(w))
-        self._updateColumnStretchBehavior()
+        self._normalizeColumnWidthsForViewport()
 
     def getColumnWidths(self):
         """Return fixed column widths for saving (last column stretches; omitted)."""
@@ -1429,6 +1603,15 @@ class FilePanel(QWidget):
             self._cancelRecursiveScanThread
         )
         self._source_model.recursiveScanRequested.connect(self._onRecursiveScanRequested)
+
+        self._table.viewportResized.connect(self._normalizeColumnWidthsForViewport)
+        self._table.horizontalHeader().sectionResized.connect(self._onColumnSectionResized)
+        QTimer.singleShot(0, self._normalizeColumnWidthsForViewport)
+
+    def _onColumnSectionResized(self, _logical_index, _old_size, _new_size):
+        if self._column_width_clamping:
+            return
+        self._normalizeColumnWidthsForViewport()
 
     # --------------------------------------------------------
     # Method: _installActivationEventFilters
@@ -1746,11 +1929,14 @@ class FilePanel(QWidget):
     # History / State for Persistence
     # --------------------------------------------------------
     def getHistoryData(self):
+        lock_state = self.getColumnWidthLockState()
         return {
             "current_path": self._source_model.currentPath(),
             "history": self._history,
             "column_widths": self.getColumnWidths(),
             "column_visibility": self.getColumnVisibility(),
+            "column_width_locked": lock_state["column_width_locked"],
+            "locked_column_widths": lock_state["locked_column_widths"],
             "filter_mode": self._proxy_model.filterMode(),
             "filter_kind": self._proxy_model.entryKindFilter(),
             "filter_text": self._filter_edit.text(),
@@ -1772,11 +1958,17 @@ class FilePanel(QWidget):
         column_widths = data.get("column_widths")
         if column_widths:
             self.applyColumnWidths(column_widths)
+        self.applyColumnWidthLockState(
+            {
+                "column_width_locked": data.get("column_width_locked"),
+                "locked_column_widths": data.get("locked_column_widths"),
+            }
+        )
         column_visibility = data.get("column_visibility")
         if column_visibility:
             self.applyColumnVisibility(column_visibility)
         else:
-            self._updateColumnStretchBehavior()
+            self._normalizeColumnWidthsForViewport()
         fm = data.get("filter_mode")
         if fm in ("contains", "wildcard", "regex"):
             self._proxy_model.setFilterMode(fm)
@@ -1963,6 +2155,7 @@ class FilePanel(QWidget):
     def _onTableHeaderContextMenu(self, pos):
         menu = QMenu(self)
         n = self._source_model.columnCount()
+        hdr = self._table.horizontalHeader()
         for col in range(n):
             label = FileSystemModel.COLUMNS[col]
             act = QAction(label, menu)
@@ -1973,6 +2166,22 @@ class FilePanel(QWidget):
             )
             menu.addAction(act)
         menu.addSeparator()
+        idx = hdr.logicalIndexAt(pos.x())
+        if 0 <= idx < n:
+            key = self._columnKeyAt(idx)
+            if key:
+                act_lock = QAction("Lock column width", menu)
+                act_lock.setCheckable(True)
+                act_lock.setChecked(bool(self._column_width_locked.get(key)))
+                act_lock.setToolTip(
+                    "When locked, this column keeps its width when you resize other columns "
+                    "or the panel."
+                )
+                act_lock.toggled.connect(
+                    lambda checked, col=idx: self._setColumnWidthLock(col, checked)
+                )
+                menu.addAction(act_lock)
+                menu.addSeparator()
         act_even = QAction("Distribute columns evenly", menu)
         act_even.setToolTip(
             "Distribute columns evenly\n\n"
@@ -1980,7 +2189,6 @@ class FilePanel(QWidget):
         )
         act_even.triggered.connect(self._distributeColumnsEvenly)
         menu.addAction(act_even)
-        hdr = self._table.horizontalHeader()
         menu.exec_(hdr.mapToGlobal(pos))
 
     def _applyColumnVisibilityToggle(self, col, visible, action):
@@ -2001,10 +2209,10 @@ class FilePanel(QWidget):
                 action.blockSignals(False)
                 return
         self._table.setColumnHidden(col, not visible)
-        self._updateColumnStretchBehavior()
+        self._normalizeColumnWidthsForViewport()
 
     def _distributeColumnsEvenly(self):
-        """Give each visible column an equal share of the table viewport width."""
+        """Give each unlocked visible column an equal share; locked widths stay fixed."""
         hdr = self._table.horizontalHeader()
         n = self._source_model.columnCount()
         visible = [c for c in range(n) if not self._table.isColumnHidden(c)]
@@ -2012,15 +2220,30 @@ class FilePanel(QWidget):
         if m == 0:
             return
         vw = max(1, self._table.viewport().width())
-        min_w = max(hdr.minimumSectionSize(), 24)
-        hdr.setStretchLastSection(False)
-        base = vw // m
-        rem = vw % m
-        for i, col in enumerate(visible):
-            wcol = base + (1 if i < rem else 0)
-            wcol = max(min_w, wcol)
-            self._table.setColumnWidth(col, wcol)
-        self._updateColumnStretchBehavior()
+        keys = self.COLUMN_VISIBILITY_KEYS
+        locked = set()
+        for c in visible:
+            k = self._columnKeyAt(c)
+            if k and self._column_width_locked.get(k):
+                locked.add(c)
+        flex = [c for c in visible if c not in locked]
+        if not flex:
+            self._normalizeColumnWidthsForViewport()
+            return
+        fixed_sum = sum(max(1, self._table.columnWidth(c)) for c in locked)
+        rem = max(1, vw - fixed_sum)
+        base = rem // len(flex)
+        extra = rem % len(flex)
+        self._column_width_clamping = True
+        try:
+            hdr.blockSignals(True)
+            for i, col in enumerate(flex):
+                wcol = base + (1 if i < extra else 0)
+                self._table.setColumnWidth(col, max(1, wcol))
+        finally:
+            hdr.blockSignals(False)
+            self._column_width_clamping = False
+        self._normalizeColumnWidthsForViewport()
 
     # --------------------------------------------------------
     # Filter options dialog and state

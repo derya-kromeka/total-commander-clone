@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, move items under a dated version section and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.21] - 2026-04-07
+
+### Added
+
+- **Lock column width**: right-click a column header and toggle **Lock column width** so that column keeps its size when you resize other columns or the panel. Locked widths are saved in panel state. **Distribute columns evenly** only resizes unlocked columns.
+
+## [0.4.20] - 2026-04-07
+
+### Fixed
+
+- **Panel column widths**: visible columns are **clamped** so their total width never exceeds the table viewport (no horizontal overflow hiding **Date** / **Type**). Each visible column keeps at least **5%** of the viewport width (or an equal split when the pane is too narrow). Applies on resize, restore, column visibility, and **Distribute columns evenly**.
+
 ## [0.4.19] - 2026-04-07
 
 ### Fixed
