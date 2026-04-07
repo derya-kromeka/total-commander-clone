@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, move items under a dated version section and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.12] - 2026-04-07
+
+### Added
+
+- **Filter options dialog** (gear next to the filter field): match mode, files/folders, subfolders, **size** and **modified date** ranges with **AND/OR** between size and date blocks, **saved presets** (stored in app state), **Clear** in the dialog and a **Clear** button on the toolbar. Advanced rules are **AND**ed with the name filter. State persists in `state.json` per panel (`filter_advanced`).
+
+## [0.4.11] - 2026-04-07
+
+### Changed
+
+- **Settings** moved from **File** to **Edit** (**Edit → Settings…**).
+
+## [0.4.10] - 2026-04-07
+
+### Changed
+
+- **Windows `git-hub-menu.bat`**: Main screen uses asterisk-framed sections for the title block, **GIT**, **THIS REPO**, and **MENU** (options list closed with a matching line) for easier scanning.
+
 ## [0.4.9] - 2026-04-07
 
 ### Changed

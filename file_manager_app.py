@@ -82,7 +82,7 @@ class FileManagerApp(QMainWindow):
     # --------------------------------------------------------
     # Method: _initMenuBar
     # Purpose: Creates the menu bar with File, Edit, View,
-    #          Bookmarks, and Help menus.
+    #          Bookmarks, and Help menus. Settings lives under Edit.
     # --------------------------------------------------------
     def _initMenuBar(self):
         menu_bar = self.menuBar()
@@ -97,14 +97,6 @@ class FileManagerApp(QMainWindow):
         )
         self._action_new_folder.triggered.connect(self._onNewFolder)
         file_menu.addAction(self._action_new_folder)
-
-        self._action_settings = QAction("Settings...", self)
-        self._action_settings.setToolTip(
-            "Settings\n\n"
-            "Theme, font size, hidden files, delete confirmation, and default folder paths for new sessions."
-        )
-        self._action_settings.triggered.connect(self._onOpenSettings)
-        file_menu.addAction(self._action_settings)
 
         file_menu.addSeparator()
 
@@ -164,6 +156,16 @@ class FileManagerApp(QMainWindow):
         )
         self._action_batch_rename.triggered.connect(self._onBatchRename)
         edit_menu.addAction(self._action_batch_rename)
+
+        edit_menu.addSeparator()
+
+        self._action_settings = QAction("Settings...", self)
+        self._action_settings.setToolTip(
+            "Settings\n\n"
+            "Theme, font size, hidden files, delete confirmation, and default folder paths for new sessions."
+        )
+        self._action_settings.triggered.connect(self._onOpenSettings)
+        edit_menu.addAction(self._action_settings)
 
         # --- View Menu ---
         view_menu = menu_bar.addMenu("&View")
@@ -371,8 +373,8 @@ class FileManagerApp(QMainWindow):
         panels_layout = QHBoxLayout()
         panels_layout.setSpacing(0)
 
-        self._left_panel = FilePanel("left", self)
-        self._right_panel = FilePanel("right", self)
+        self._left_panel = FilePanel("left", self, settings_manager=self._settings)
+        self._right_panel = FilePanel("right", self, settings_manager=self._settings)
 
         self._left_library_browser = LibraryBrowserPanel("left", self)
         self._right_library_browser = LibraryBrowserPanel("right", self)

@@ -53,6 +53,7 @@ DEFAULT_STATE = {
         "filter_kind": "all",
         "filter_text": "",
         "filter_include_subfolders": False,
+        "filter_advanced": {},
     },
     "right_panel": {
         "current_path": "",
@@ -67,12 +68,14 @@ DEFAULT_STATE = {
         "filter_kind": "all",
         "filter_text": "",
         "filter_include_subfolders": False,
+        "filter_advanced": {},
     },
     "bookmarks": [],
     "recent_paths": [],
     "libraries": [],
     "folder_tags": {},
     "saved_library_filters": [],
+    "saved_file_filters": [],
     "sidebar_state": {
         "current_tab": "bookmarks",
     },
@@ -270,6 +273,12 @@ class SettingsManager:
 
     def setSavedLibraryFilters(self, filters):
         self._state["saved_library_filters"] = filters or []
+
+    def getSavedFileFilters(self):
+        return self._state.get("saved_file_filters", [])
+
+    def setSavedFileFilters(self, filters):
+        self._state["saved_file_filters"] = filters or []
 
     def getSidebarState(self):
         return self._state.get("sidebar_state", DEFAULT_STATE.get("sidebar_state", {}))

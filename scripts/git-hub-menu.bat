@@ -26,15 +26,19 @@ if not defined PROJECT_ROOT (
 
 :menu
 cls
-echo ==========================================
-echo   Git / GitHub helper
-echo ==========================================
+echo **********************************************************************
+echo *  Git / GitHub helper                                             *
+echo **********************************************************************
 echo   Project root: %PROJECT_ROOT%
 echo   This script:  %~f0
-echo ==========================================
+echo **********************************************************************
 echo.
 
 call :print_menu_context
+
+echo **********************************************************************
+echo *  MENU  —  type a number, then press Enter                        *
+echo **********************************************************************
 echo   1 - Check Git / install instructions
 echo   2 - Init repository here ^(git init, branch main^)
 echo   3 - Set or change remote origin ^(GitHub URL^)
@@ -48,6 +52,7 @@ echo  10 - Force push ^(after history rewrite; --force-with-lease^)
 echo  11 - GitHub HTTPS token - how-to + save ^(fixes 401^)
 echo  12 - Diagnose push/auth/remote errors ^(401, repository not found^)
 echo   0 - Exit
+echo **********************************************************************
 echo.
 set /p CHOICE=Enter choice [0-12]: 
 
@@ -545,40 +550,54 @@ REM Summary under the menu: origin, identity, HTTPS token file ^(no network test
 set "CTX_ORIG="
 set "CTX_UN="
 set "CTX_UE="
+echo **********************************************************************
+echo *  GIT                                                             *
+echo **********************************************************************
 where git >nul 2>&1
 if errorlevel 1 (
-  echo   Git: NOT FOUND - use option 1
+  echo   Git is NOT in PATH  —  install or use option 1
+  echo **********************************************************************
+  echo.
   exit /b 0
 )
 for /f "delims=" %%v in ('git --version') do echo   %%v
+echo **********************************************************************
+echo.
+echo **********************************************************************
+echo *  THIS REPO  —  remote, commit identity, HTTPS token               *
+echo *    ^(read from your PC - not a live online check^)                *
+echo **********************************************************************
 if not exist "%PROJECT_ROOT%\.git" (
-  echo   ^(This folder is not a Git repo yet — use option 2^)
+  echo   Not a Git repository yet  —  use option 2 ^(git init^)
+  echo **********************************************************************
+  echo.
   exit /b 0
 )
-echo   --- This repo ^(quick summary^) ---
 for /f "delims=" %%u in ('git -C "%PROJECT_ROOT%" remote get-url origin 2^>nul') do set "CTX_ORIG=%%u"
 if "!CTX_ORIG!"=="" (
-  echo   origin:        ^(not set — use option 3^)
+  echo   origin ^(remote^):  ^(not set — use option 3^)
 ) else (
-  echo   origin:        !CTX_ORIG!
+  echo   origin ^(remote^):  !CTX_ORIG!
 )
 for /f "delims=" %%a in ('git -C "%PROJECT_ROOT%" config user.name 2^>nul') do set "CTX_UN=%%a"
 for /f "delims=" %%a in ('git -C "%PROJECT_ROOT%" config user.email 2^>nul') do set "CTX_UE=%%a"
 if "!CTX_UN!"=="" (
-  echo   commit name:   ^(not set — option 7^)
+  echo   commit name:       ^(not set — option 7^)
 ) else (
-  echo   commit name:   !CTX_UN!
+  echo   commit name:       !CTX_UN!
 )
 if "!CTX_UE!"=="" (
-  echo   commit email:  ^(not set — option 7^)
+  echo   commit email:      ^(not set — option 7^)
 ) else (
-  echo   commit email:  !CTX_UE!
+  echo   commit email:      !CTX_UE!
 )
 if exist "%PROJECT_ROOT%\.git\gh-credential-store" (
-  echo   HTTPS token:   saved in this repo ^(for HTTPS only; option 11^)
+  echo   HTTPS token:       saved in .git for this repo ^(HTTPS only; option 11^)
 ) else (
-  echo   HTTPS token:   not saved here ^(if HTTPS asks for a password, use option 11^)
+  echo   HTTPS token:       not saved here ^(if GitHub asks for a password, option 11^)
 )
+echo **********************************************************************
+echo.
 exit /b 0
 
 REM First ## [X.Y.Z] in CHANGELOG.md that is not [Unreleased] (Keep a Changelog).

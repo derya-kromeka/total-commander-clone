@@ -15,6 +15,8 @@ import subprocess
 import time
 from datetime import datetime
 
+from filter_spec import FilterSpec
+
 
 # Pattern for splitting names into text vs digit runs (natural sort).
 _NATURAL_SORT_SPLIT = re.compile(r"(\d+)")
@@ -615,6 +617,7 @@ class FileSortFilterProxy(QSortFilterProxyModel):
         self._entry_kind = "all"
         self._regex_obj = None
         self._regex_invalid = False
+        self._filter_spec = FilterSpec()
         self.setDynamicSortFilter(True)
 
     # --------------------------------------------------------
@@ -658,6 +661,17 @@ class FileSortFilterProxy(QSortFilterProxyModel):
         return self._entry_kind
 
     # --------------------------------------------------------
+    # Method: setFilterSpec / filterSpec
+    # Purpose: Optional size/date rules (FilterSpec); AND with name + kind.
+    # --------------------------------------------------------
+    def setFilterSpec(self, spec):
+        self._filter_spec = spec if spec is not None else FilterSpec()
+        self.invalidateFilter()
+
+    def filterSpec(self):
+        return self._filter_spec
+
+    # --------------------------------------------------------
     # Method: filterAcceptsRow
     # --------------------------------------------------------
     def filterAcceptsRow(self, source_row, source_parent):
@@ -671,19 +685,25 @@ class FileSortFilterProxy(QSortFilterProxyModel):
         if self._entry_kind == "files" and entry["is_dir"]:
             return False
 
-        if not (self._filter_text or "").strip():
-            return True
-
-        name = entry["name"]
-        if self._filter_mode == "contains":
-            return self._filter_text.lower() in name.lower()
-        if self._filter_mode == "wildcard":
-            pat = self._filter_text.strip()
-            return fnmatch.fnmatch(name.lower(), pat.lower())
-        if self._filter_mode == "regex":
-            if self._regex_invalid or self._regex_obj is None:
+        if (self._filter_text or "").strip():
+            name = entry["name"]
+            ok = False
+            if self._filter_mode == "contains":
+                ok = self._filter_text.lower() in name.lower()
+            elif self._filter_mode == "wildcard":
+                pat = self._filter_text.strip()
+                ok = fnmatch.fnmatch(name.lower(), pat.lower())
+            elif self._filter_mode == "regex":
+                if self._regex_invalid or self._regex_obj is None:
+                    ok = False
+                else:
+                    ok = self._regex_obj.search(name) is not None
+            if not ok:
                 return False
-            return self._regex_obj.search(name) is not None
+
+        if self._filter_spec is not None and not self._filter_spec.is_empty():
+            if not self._filter_spec.matches(entry):
+                return False
         return True
 
     # --------------------------------------------------------
@@ -1046,9 +1066,10 @@ class FilePanel(QWidget):
     # --------------------------------------------------------
     # Method: __init__
     # --------------------------------------------------------
-    def __init__(self, panel_side="left", parent=None):
+    def __init__(self, panel_side="left", parent=None, settings_manager=None):
         super().__init__(parent)
         self._panel_side = panel_side
+        self._settings_manager = settings_manager
         self._history = []
         self._history_index = -1
         self._is_active = False
@@ -1228,67 +1249,22 @@ class FilePanel(QWidget):
         self._filter_edit.setClearButtonEnabled(True)
         self._filter_edit.setToolTip(
             "Filter\n\n"
-            "Narrow the file list by name. Use the gear button for match mode "
-            "(contains, wildcard, regex) and the Subfolders checkbox to search below "
-            "the current folder."
+            "Narrow the file list by name. Use the gear for full options "
+            "(match mode, files/folders, size, date, saved presets). "
+            "Use Subfolders to search below the current folder."
         )
 
-        self._filter_menu = QMenu(self)
-        self._group_match = QActionGroup(self)
-        self._group_match.setExclusive(True)
-        self._act_match_contains = QAction("Contains text", self)
-        self._act_match_contains.setCheckable(True)
-        self._act_match_contains.setChecked(True)
-        self._group_match.addAction(self._act_match_contains)
-        self._act_match_wildcard = QAction("Wildcard (* and ?)", self)
-        self._act_match_wildcard.setCheckable(True)
-        self._group_match.addAction(self._act_match_wildcard)
-        self._act_match_regex = QAction("Regular expression", self)
-        self._act_match_regex.setCheckable(True)
-        self._group_match.addAction(self._act_match_regex)
-        self._act_match_contains.setToolTip(
-            "Contains text\n\nFile or folder name must include the filter text (case-insensitive)."
+        self._btn_filter_clear = QPushButton("Clear")
+        self._btn_filter_clear.setObjectName("navButton")
+        self._btn_filter_clear.setFixedHeight(NAV_BAR_HEIGHT)
+        self._btn_filter_clear.setMaximumWidth(72)
+        self._btn_filter_clear.setToolTip(
+            "Clear filter\n\n"
+            "Remove name filter, match mode, size/date rules, and subfolder search."
         )
-        self._act_match_wildcard.setToolTip(
-            "Wildcard\n\nUse * for any characters and ? for one character (e.g. *.py)."
-        )
-        self._act_match_regex.setToolTip(
-            "Regular expression\n\nPython-style regex matched against the file or folder name."
-        )
-        sec_m = self._filter_menu.addAction("Match name")
-        sec_m.setEnabled(False)
-        self._filter_menu.addAction(self._act_match_contains)
-        self._filter_menu.addAction(self._act_match_wildcard)
-        self._filter_menu.addAction(self._act_match_regex)
-        self._group_match.triggered.connect(self._onFilterMatchAction)
-
-        self._group_kind = QActionGroup(self)
-        self._group_kind.setExclusive(True)
-        self._act_kind_all = QAction("All items", self)
-        self._act_kind_all.setCheckable(True)
-        self._act_kind_all.setChecked(True)
-        self._group_kind.addAction(self._act_kind_all)
-        self._act_kind_dirs = QAction("Folders only", self)
-        self._act_kind_dirs.setCheckable(True)
-        self._group_kind.addAction(self._act_kind_dirs)
-        self._act_kind_files = QAction("Files only", self)
-        self._act_kind_files.setCheckable(True)
-        self._group_kind.addAction(self._act_kind_files)
-        self._act_kind_all.setToolTip(
-            "All items\n\nApply the filter to both files and folders."
-        )
-        self._act_kind_dirs.setToolTip(
-            "Folders only\n\nShow only directories that match the filter."
-        )
-        self._act_kind_files.setToolTip(
-            "Files only\n\nShow only files that match the filter."
-        )
-        sec_k = self._filter_menu.addAction("Show")
-        sec_k.setEnabled(False)
-        self._filter_menu.addAction(self._act_kind_all)
-        self._filter_menu.addAction(self._act_kind_dirs)
-        self._filter_menu.addAction(self._act_kind_files)
-        self._group_kind.triggered.connect(self._onFilterKindAction)
+        self._btn_filter_clear.setAutoDefault(False)
+        self._btn_filter_clear.setDefault(False)
+        self._btn_filter_clear.clicked.connect(self.clearFilter)
 
         self._btn_filter_options = QToolButton()
         self._btn_filter_options.setObjectName("navButton")
@@ -1296,12 +1272,11 @@ class FilePanel(QWidget):
         self._btn_filter_options.setIconSize(QSize(NAV_ICON_SIZE, NAV_ICON_SIZE))
         self._btn_filter_options.setToolTip(
             "Filter options\n\n"
-            "Choose how names are matched (contains, wildcard, or regex) and whether to "
-            "list only files, only folders, or both."
+            "Open the filter dialog: match mode, files or folders only, subfolders, "
+            "size and modified date (with AND/OR), saved presets."
         )
-        self._btn_filter_options.setPopupMode(QToolButton.InstantPopup)
-        self._btn_filter_options.setMenu(self._filter_menu)
         self._btn_filter_options.setAutoRaise(True)
+        self._btn_filter_options.clicked.connect(self._onOpenFilterOptions)
         filter_opts_icon = QIcon.fromTheme("view-filter")
         if filter_opts_icon.isNull():
             filter_opts_icon = style.standardIcon(QStyle.SP_FileDialogContentsView)
@@ -1345,6 +1320,7 @@ class FilePanel(QWidget):
         )
         self._chk_filter_subfolders.stateChanged.connect(self._onSubfoldersFilterToggled)
         nav_layout.addWidget(self._chk_filter_subfolders, 0, Qt.AlignVCenter)
+        nav_layout.addWidget(self._btn_filter_clear, 0, Qt.AlignVCenter)
         nav_layout.addWidget(self._btn_filter_options)
 
         layout.addLayout(nav_layout)
@@ -1453,6 +1429,7 @@ class FilePanel(QWidget):
             self._btn_up,
             self._btn_home,
             self._chk_filter_subfolders,
+            self._btn_filter_clear,
             self._btn_filter_options,
             self._btn_new_folder,
             self._drive_combo,
@@ -1760,6 +1737,7 @@ class FilePanel(QWidget):
             "filter_kind": self._proxy_model.entryKindFilter(),
             "filter_text": self._filter_edit.text(),
             "filter_include_subfolders": self._chk_filter_subfolders.isChecked(),
+            "filter_advanced": self._proxy_model.filterSpec().to_dict(),
         }
 
     def restoreHistoryData(self, data):
@@ -1789,7 +1767,10 @@ class FilePanel(QWidget):
         self._filter_edit.setText(data.get("filter_text") or "")
         self._filter_edit.blockSignals(False)
         self._proxy_model.setFilterText(self._filter_edit.text())
-        self._syncFilterActionsFromModel()
+        self._proxy_model.setFilterSpec(
+            FilterSpec.from_dict(data.get("filter_advanced"))
+        )
+        self._updateFilterPlaceholder()
 
     # --------------------------------------------------------
     # Focus handling for active panel detection
@@ -1818,6 +1799,7 @@ class FilePanel(QWidget):
             self._btn_up,
             self._btn_home,
             self._chk_filter_subfolders,
+            self._btn_filter_clear,
             self._btn_filter_options,
             self._btn_new_folder,
             self._drive_combo,
@@ -2019,40 +2001,55 @@ class FilePanel(QWidget):
             self._table.setColumnWidth(col, wcol)
 
     # --------------------------------------------------------
-    # Filter options menu (match mode + folders/files)
+    # Filter options dialog and state
     # --------------------------------------------------------
-    def _onFilterMatchAction(self, action):
-        if action == self._act_match_contains:
-            self._proxy_model.setFilterMode("contains")
-        elif action == self._act_match_wildcard:
-            self._proxy_model.setFilterMode("wildcard")
-        elif action == self._act_match_regex:
-            self._proxy_model.setFilterMode("regex")
+    def getFilterState(self):
+        return {
+            "filter_text": self._filter_edit.text(),
+            "filter_mode": self._proxy_model.filterMode(),
+            "filter_kind": self._proxy_model.entryKindFilter(),
+            "filter_include_subfolders": self._chk_filter_subfolders.isChecked(),
+            "filter_advanced": self._proxy_model.filterSpec().to_dict(),
+        }
+
+    def applyFilterState(self, data):
+        if not data:
+            return
+        ft = data.get("filter_text") or ""
+        self._filter_edit.blockSignals(True)
+        self._filter_edit.setText(ft)
+        self._filter_edit.blockSignals(False)
+        self._proxy_model.setFilterText(ft)
+        fm = data.get("filter_mode")
+        if fm in ("contains", "wildcard", "regex"):
+            self._proxy_model.setFilterMode(fm)
+        fk = data.get("filter_kind")
+        if fk in ("all", "dirs", "files"):
+            self._proxy_model.setEntryKindFilter(fk)
+        self._proxy_model.setFilterSpec(
+            FilterSpec.from_dict(data.get("filter_advanced"))
+        )
+        sub = bool(data.get("filter_include_subfolders", False))
+        self._chk_filter_subfolders.blockSignals(True)
+        self._chk_filter_subfolders.setChecked(sub)
+        self._chk_filter_subfolders.blockSignals(False)
+        self._source_model.setRecursive(sub)
         self._updateFilterPlaceholder()
 
-    def _onFilterKindAction(self, action):
-        if action == self._act_kind_all:
-            self._proxy_model.setEntryKindFilter("all")
-        elif action == self._act_kind_dirs:
-            self._proxy_model.setEntryKindFilter("dirs")
-        elif action == self._act_kind_files:
-            self._proxy_model.setEntryKindFilter("files")
-        self._updateFilterPlaceholder()
+    def clearFilter(self):
+        self.applyFilterState({
+            "filter_text": "",
+            "filter_mode": "contains",
+            "filter_kind": "all",
+            "filter_include_subfolders": False,
+            "filter_advanced": {},
+        })
 
-    def _syncFilterActionsFromModel(self):
-        self._group_match.blockSignals(True)
-        mode = self._proxy_model.filterMode()
-        self._act_match_contains.setChecked(mode == "contains")
-        self._act_match_wildcard.setChecked(mode == "wildcard")
-        self._act_match_regex.setChecked(mode == "regex")
-        self._group_match.blockSignals(False)
-        self._group_kind.blockSignals(True)
-        kind = self._proxy_model.entryKindFilter()
-        self._act_kind_all.setChecked(kind == "all")
-        self._act_kind_dirs.setChecked(kind == "dirs")
-        self._act_kind_files.setChecked(kind == "files")
-        self._group_kind.blockSignals(False)
-        self._updateFilterPlaceholder()
+    def _onOpenFilterOptions(self):
+        from filter_options_dialog import FilterOptionsDialog
+
+        dlg = FilterOptionsDialog(self, self._settings_manager, self)
+        dlg.exec_()
 
     def _onSubfoldersFilterToggled(self, *_args):
         self._source_model.setRecursive(self._chk_filter_subfolders.isChecked())
@@ -2072,6 +2069,9 @@ class FilePanel(QWidget):
             hint.append("files")
         if self._chk_filter_subfolders.isChecked():
             hint.append("subfolders")
+        spec = self._proxy_model.filterSpec()
+        if spec is not None and not spec.is_empty():
+            hint.append("size/date")
         extra = (" · " + ", ".join(hint)) if hint else ""
         self._filter_edit.setPlaceholderText(f"\U0001F50D Filter{extra}…")
 
