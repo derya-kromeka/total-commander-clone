@@ -117,7 +117,7 @@ if not exist "%PROJECT_ROOT%\.git" (
 )
 echo Paste GitHub repo URL ^(HTTPS or git@... SSH^). Empty = cancel.
 set /p URL=origin URL: 
-if "!URL!"=="" echo Cancelled. & pause & goto menu
+if "!URL!"=="" set "GIT_MENU_FROM_COMMIT=" & echo Cancelled. & pause & goto menu
 cd /d "%PROJECT_ROOT%"
 git remote get-url origin >nul 2>&1
 if errorlevel 1 (
@@ -127,6 +127,12 @@ if errorlevel 1 (
   git remote set-url origin "!URL!"
 )
 git remote -v
+if defined GIT_MENU_FROM_COMMIT (
+  set "GIT_MENU_FROM_COMMIT="
+  echo.
+  echo Continuing option 6: add, commit, push...
+  goto commit_push
+)
 pause
 goto menu
 
@@ -176,8 +182,8 @@ if errorlevel 1 (
   echo Then use menu option 3, or set remote now below.
   echo.
   set /p CP_OR=Set remote now? [y/N]: 
-  if /I "!CP_OR!"=="y" goto set_remote
-  if /I "!CP_OR!"=="yes" goto set_remote
+  if /I "!CP_OR!"=="y" set "GIT_MENU_FROM_COMMIT=1" & goto set_remote
+  if /I "!CP_OR!"=="yes" set "GIT_MENU_FROM_COMMIT=1" & goto set_remote
   echo Cancelled.
   pause
   goto menu

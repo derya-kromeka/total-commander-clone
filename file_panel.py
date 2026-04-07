@@ -4,6 +4,8 @@ A single file-browser pane with address bar, navigation buttons,
 file table, sorting, filtering, in-place rename, and drag-and-drop.
 """
 
+import fnmatch
+import html
 import os
 import platform
 import re
@@ -24,6 +26,17 @@ _NATURAL_SORT_SPLIT = re.compile(r"(\d+)")
 #          Each segment is (0, int) or (1, str) so list compare
 #          never mixes bare int with str (e.g. "33112_x" vs "a_1").
 # ------------------------------------------------------------
+def path_under_root(root, rel):
+    """Build an absolute path under root from a relative display path (may contain subdirs)."""
+    if not rel:
+        return root
+    rel = rel.replace("/", os.sep).strip()
+    parts = [p for p in rel.split(os.sep) if p and p != "."]
+    if not parts:
+        return root
+    return os.path.normpath(os.path.join(root, *parts))
+
+
 def natural_sort_key(name):
     parts = []
     for part in _NATURAL_SORT_SPLIT.split(name):
@@ -48,13 +61,14 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableView, QLineEdit,
     QPushButton, QAbstractItemView, QHeaderView, QFrame, QLabel,
     QStyledItemDelegate, QStyle, QApplication, QComboBox,
-    QFileIconProvider,
+    QFileIconProvider, QInputDialog, QMessageBox,
+    QMenu, QAction, QActionGroup, QToolButton, QCheckBox,
 )
 from PyQt5.QtCore import (
     Qt, QAbstractTableModel, QModelIndex, QVariant, QMimeData,
     QUrl, pyqtSignal, QSortFilterProxyModel, QPoint, QTimer, QEvent,
     QItemSelectionModel, QSize, QItemSelection, QItemSelectionRange,
-    QFileInfo,
+    QFileInfo, QMimeDatabase,
 )
 from PyQt5.QtGui import (
     QDrag, QDesktopServices, QIcon, QPixmap, QPainter, QColor, QKeySequence,
@@ -104,6 +118,160 @@ def getFileTypeDescription(file_path, is_dir):
     return "File"
 
 
+# ------------------------------------------------------------
+# Helper: Windows associated application friendly name (optional)
+# ------------------------------------------------------------
+def _windows_associated_app_name(path):
+    if os.name != "nt" or not path or not os.path.isfile(path):
+        return ""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        ASSOCF_INIT_DEFAULTTOSTAR = 0x00000004
+        ASSOCSTR_FRIENDLYAPPNAME = 8
+        shell32 = ctypes.windll.shell32
+        buf = ctypes.create_unicode_buffer(1024)
+        pcch = wintypes.DWORD(len(buf))
+        p = os.path.normpath(path)
+        hr = shell32.AssocQueryStringW(
+            ASSOCF_INIT_DEFAULTTOSTAR,
+            ASSOCSTR_FRIENDLYAPPNAME,
+            p,
+            None,
+            buf,
+            ctypes.byref(pcch),
+        )
+        if hr == 0 and buf.value:
+            return buf.value.strip()
+    except Exception:
+        pass
+    return ""
+
+
+# ------------------------------------------------------------
+# Helper: byte size of files directly in a folder (non-recursive)
+# ------------------------------------------------------------
+def _folder_immediate_files_size_bytes(path):
+    """
+    Sum st_size for entries that are regular files in `path` only.
+    Does not descend into subfolders (keeps tooltips fast). Symlinks are not followed.
+    Returns None if the path is unusable or listing fails.
+    """
+    if not path or not os.path.isdir(path):
+        return None
+    total = 0
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                try:
+                    if entry.is_file(follow_symlinks=False):
+                        total += entry.stat(follow_symlinks=False).st_size
+                except OSError:
+                    continue
+    except OSError:
+        return None
+    return total
+
+
+# ------------------------------------------------------------
+# Helper: Rich HTML tooltip for file list rows (summary card)
+# ------------------------------------------------------------
+def build_entry_tooltip_html(entry):
+    name = entry["name"]
+    full = entry["full_path"]
+    is_dir = entry["is_dir"]
+    dt = datetime.fromtimestamp(entry["mod_time"])
+    date_s = dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    esc_name = html.escape(name)
+    esc_full = html.escape(full)
+
+    rows_html = []
+    rows_html.append(
+        f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Location</td>"
+        f"<td style='padding:2px 0;'>{esc_full}</td></tr>"
+    )
+    rows_html.append(
+        f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Modified</td>"
+        f"<td style='padding:2px 0;'>{html.escape(date_s)}</td></tr>"
+    )
+    rows_html.append(
+        f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Listed type</td>"
+        f"<td style='padding:2px 0;'>{html.escape(entry['type'])}</td></tr>"
+    )
+
+    title = "Folder" if is_dir else "File"
+    icon = "&#128193;" if is_dir else "&#128196;"
+
+    if is_dir:
+        qb = _folder_immediate_files_size_bytes(full)
+        if qb is not None:
+            sz = formatFileSize(qb)
+            rows_html.insert(
+                1,
+                f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Size</td>"
+                f"<td style='padding:2px 0;'>{html.escape(sz)} "
+                f"<span style='color:#888;font-size:11px;'>(files here only)</span></td></tr>",
+            )
+        foot = ["Double-click to open this folder in the panel."]
+        if qb is not None:
+            foot.append("Size includes only files in this folder, not subfolders.")
+        body_extra = (
+            "<p style='margin:8px 0 0 0;color:#888;font-size:11px;'>"
+            + "<br/>".join(foot)
+            + "</p>"
+        )
+    else:
+        sz = formatFileSize(entry["size"])
+        rows_html.insert(
+            1,
+            f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Size</td>"
+            f"<td style='padding:2px 0;'>{html.escape(sz)}</td></tr>",
+        )
+        db = QMimeDatabase()
+        mt = db.mimeTypeForFile(full)
+        raw_name = mt.name()
+        raw_comment = mt.comment() or ""
+        rows_html.append(
+            f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>MIME</td>"
+            f"<td style='padding:2px 0;'>{html.escape(raw_name)}</td></tr>"
+        )
+        if raw_comment and raw_comment != raw_name:
+            rows_html.append(
+                f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Kind</td>"
+                f"<td style='padding:2px 0;'>{html.escape(raw_comment)}</td></tr>"
+            )
+        opens = _windows_associated_app_name(full)
+        if opens:
+            rows_html.append(
+                f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Opens with</td>"
+                f"<td style='padding:2px 0;'>{html.escape(opens)}</td></tr>"
+            )
+        body_extra = (
+            "<p style='margin:8px 0 0 0;color:#888;font-size:11px;'>"
+            "Double-click to open with the default application.</p>"
+        )
+
+    table = (
+        "<table cellspacing='0' cellpadding='0' style='border-collapse:collapse;'>"
+        + "".join(rows_html)
+        + "</table>"
+    )
+
+    return (
+        "<html><head/><body style='color:#dce0ee;'>"
+        f"<div style='min-width:280px;max-width:480px;'>"
+        f"<div style='font-size:13px;font-weight:600;margin-bottom:6px;'>"
+        f"{icon} {esc_name} <span style='color:#888;font-weight:normal;'>"
+        f"({title})</span></div>"
+        f"<div style='height:1px;background:#555;margin:4px 0 8px 0;'></div>"
+        f"{table}"
+        f"{body_extra}"
+        "</div></body></html>"
+    )
+
+
 # ============================================================
 # Class: DriveLineEdit
 # Purpose: Embedded editor for the drive QComboBox; clicking the
@@ -130,8 +298,19 @@ class DriveLineEdit(QLineEdit):
 # Class: DrivePickerCombo
 # Purpose: Drive QComboBox that opens the list on any left-click on
 #          the widget (e.g. drop-down button area inside the control).
+#          Optional on_before_popup runs when the list is about to open
+#          (e.g. re-scan drive letters on Windows).
 # ============================================================
 class DrivePickerCombo(QComboBox):
+
+    def __init__(self, parent=None, on_before_popup=None):
+        super().__init__(parent)
+        self._on_before_popup = on_before_popup
+
+    def showPopup(self):
+        if self._on_before_popup is not None:
+            self._on_before_popup()
+        super().showPopup()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and self.isVisible():
@@ -148,6 +327,12 @@ class DrivePickerCombo(QComboBox):
 class FileSystemModel(QAbstractTableModel):
 
     COLUMNS = ["Name", "Size", "Type", "Date Modified"]
+    COLUMN_TOOLTIPS = [
+        "Name — File or folder as listed (includes subpaths when Subfolders search is on).",
+        "Size — File size on disk; folders show &lt;DIR&gt;.",
+        "Type — Extension or category (e.g. PY File, Folder).",
+        "Date Modified — Last time the item was modified.",
+    ]
 
     # --------------------------------------------------------
     # Method: __init__
@@ -157,7 +342,23 @@ class FileSystemModel(QAbstractTableModel):
         self._current_path = ""
         self._entries = []
         self._show_hidden = False
+        self._recursive = False
         self._icon_provider = QFileIconProvider()
+
+    # --------------------------------------------------------
+    # Method: setRecursive
+    # Purpose: When True, list all files/folders under current path (tree walk).
+    # --------------------------------------------------------
+    def setRecursive(self, recursive):
+        recursive = bool(recursive)
+        if self._recursive == recursive:
+            return
+        self._recursive = recursive
+        if self._current_path:
+            self.loadDirectory(self._current_path)
+
+    def isRecursive(self):
+        return self._recursive
 
     # --------------------------------------------------------
     # Method: setShowHidden
@@ -167,6 +368,32 @@ class FileSystemModel(QAbstractTableModel):
         self._show_hidden = show
         if self._current_path:
             self.loadDirectory(self._current_path)
+
+    def _skip_hidden_stat(self, full_path, name):
+        if self._show_hidden:
+            return False
+        if name.startswith("."):
+            return True
+        if os.name == "nt":
+            try:
+                st = os.stat(full_path)
+                attrs = getattr(st, "st_file_attributes", 0)
+                if attrs & stat.FILE_ATTRIBUTE_HIDDEN:
+                    return True
+            except OSError:
+                return True
+        return False
+
+    def _append_entry(self, full_path, display_name, is_dir, size, mod_time):
+        file_type = getFileTypeDescription(full_path, is_dir)
+        self._entries.append({
+            "name": display_name,
+            "size": size,
+            "type": file_type,
+            "mod_time": mod_time,
+            "is_dir": is_dir,
+            "full_path": full_path,
+        })
 
     # --------------------------------------------------------
     # Method: loadDirectory
@@ -178,46 +405,77 @@ class FileSystemModel(QAbstractTableModel):
         self._current_path = path
         self._entries = []
 
+        if self._recursive:
+            self._loadDirectoryRecursive(path)
+        else:
+            self._loadDirectoryFlat(path)
+
+        self._entries.sort(key=lambda e: (not e["is_dir"], natural_sort_key(e["name"])))
+        self.endResetModel()
+
+    def _loadDirectoryFlat(self, path):
         try:
             items = os.listdir(path)
-        except PermissionError:
-            self.endResetModel()
-            return
-        except OSError:
-            self.endResetModel()
+        except (PermissionError, OSError):
             return
 
         for name in items:
-            if not self._show_hidden and name.startswith("."):
+            if self._skip_hidden_stat(os.path.join(path, name), name):
                 continue
 
             full_path = os.path.join(path, name)
             try:
                 st = os.stat(full_path)
                 is_dir = stat.S_ISDIR(st.st_mode)
-
-                if not self._show_hidden and os.name == "nt":
-                    attrs = st.st_file_attributes
-                    if attrs & stat.FILE_ATTRIBUTE_HIDDEN:
-                        continue
-
                 size = st.st_size if not is_dir else -1
                 mod_time = st.st_mtime
-                file_type = getFileTypeDescription(full_path, is_dir)
-
-                self._entries.append({
-                    "name": name,
-                    "size": size,
-                    "type": file_type,
-                    "mod_time": mod_time,
-                    "is_dir": is_dir,
-                    "full_path": full_path,
-                })
+                self._append_entry(full_path, name, is_dir, size, mod_time)
             except (PermissionError, OSError):
                 continue
 
-        self._entries.sort(key=lambda e: (not e["is_dir"], natural_sort_key(e["name"])))
-        self.endResetModel()
+    def _loadDirectoryRecursive(self, root):
+        root = os.path.normpath(root)
+        try:
+            for dirpath, dirnames, filenames in os.walk(root):
+                if not self._show_hidden:
+                    dirnames[:] = [
+                        d for d in dirnames
+                        if not self._skip_hidden_stat(os.path.join(dirpath, d), d)
+                    ]
+
+                rel_dir = os.path.relpath(dirpath, root)
+                if rel_dir == os.curdir:
+                    rel_dir = ""
+
+                for d in dirnames:
+                    full_path = os.path.join(dirpath, d)
+                    if self._skip_hidden_stat(full_path, d):
+                        continue
+                    try:
+                        st = os.stat(full_path)
+                        if not stat.S_ISDIR(st.st_mode):
+                            continue
+                        display = os.path.join(rel_dir, d) if rel_dir else d
+                        self._append_entry(full_path, display, True, -1, st.st_mtime)
+                    except (PermissionError, OSError):
+                        continue
+
+                for f in filenames:
+                    if self._skip_hidden_stat(os.path.join(dirpath, f), f):
+                        continue
+                    full_path = os.path.join(dirpath, f)
+                    try:
+                        st = os.stat(full_path)
+                        if stat.S_ISDIR(st.st_mode):
+                            continue
+                        display = os.path.join(rel_dir, f) if rel_dir else f
+                        self._append_entry(
+                            full_path, display, False, st.st_size, st.st_mtime
+                        )
+                    except (PermissionError, OSError):
+                        continue
+        except (PermissionError, OSError):
+            return
 
     # --------------------------------------------------------
     # Method: currentPath
@@ -251,7 +509,7 @@ class FileSystemModel(QAbstractTableModel):
     def renameEntry(self, row, new_name):
         if 0 <= row < len(self._entries):
             entry = self._entries[row]
-            new_path = os.path.join(self._current_path, new_name)
+            new_path = path_under_root(self._current_path, new_name)
             entry["name"] = new_name
             entry["full_path"] = new_path
             entry["type"] = getFileTypeDescription(new_path, entry["is_dir"])
@@ -274,6 +532,9 @@ class FileSystemModel(QAbstractTableModel):
 
         entry = self._entries[index.row()]
         col = index.column()
+
+        if role == Qt.ToolTipRole:
+            return build_entry_tooltip_html(entry)
 
         if role == Qt.DisplayRole:
             if col == 0:
@@ -303,8 +564,12 @@ class FileSystemModel(QAbstractTableModel):
         return QVariant()
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
-        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-            return self.COLUMNS[section]
+        if orientation == Qt.Horizontal:
+            if role == Qt.DisplayRole:
+                return self.COLUMNS[section]
+            if role == Qt.ToolTipRole:
+                if 0 <= section < len(self.COLUMN_TOOLTIPS):
+                    return self.COLUMN_TOOLTIPS[section]
         return QVariant()
 
     def flags(self, index):
@@ -346,26 +611,80 @@ class FileSortFilterProxy(QSortFilterProxyModel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._filter_text = ""
+        self._filter_mode = "contains"
+        self._entry_kind = "all"
+        self._regex_obj = None
+        self._regex_invalid = False
         self.setDynamicSortFilter(True)
 
     # --------------------------------------------------------
     # Method: setFilterText
     # --------------------------------------------------------
     def setFilterText(self, text):
-        self._filter_text = text.lower()
+        self._filter_text = text
+        self._regex_obj = None
+        self._regex_invalid = False
+        if self._filter_mode == "regex" and text.strip():
+            try:
+                self._regex_obj = re.compile(text, re.IGNORECASE | re.UNICODE)
+            except re.error:
+                self._regex_invalid = True
         self.invalidateFilter()
+
+    # --------------------------------------------------------
+    # Method: setFilterMode
+    # Purpose: "contains" | "wildcard" | "regex" — how name is matched.
+    # --------------------------------------------------------
+    def setFilterMode(self, mode):
+        if mode not in ("contains", "wildcard", "regex"):
+            return
+        self._filter_mode = mode
+        self.setFilterText(self._filter_text)
+
+    def filterMode(self):
+        return self._filter_mode
+
+    # --------------------------------------------------------
+    # Method: setEntryKindFilter
+    # Purpose: "all" | "dirs" | "files" — limit rows before name match.
+    # --------------------------------------------------------
+    def setEntryKindFilter(self, kind):
+        if kind not in ("all", "dirs", "files"):
+            return
+        self._entry_kind = kind
+        self.invalidateFilter()
+
+    def entryKindFilter(self):
+        return self._entry_kind
 
     # --------------------------------------------------------
     # Method: filterAcceptsRow
     # --------------------------------------------------------
     def filterAcceptsRow(self, source_row, source_parent):
-        if not self._filter_text:
-            return True
         model = self.sourceModel()
         entry = model.entryAt(source_row)
         if entry is None:
             return False
-        return self._filter_text in entry["name"].lower()
+
+        if self._entry_kind == "dirs" and not entry["is_dir"]:
+            return False
+        if self._entry_kind == "files" and entry["is_dir"]:
+            return False
+
+        if not (self._filter_text or "").strip():
+            return True
+
+        name = entry["name"]
+        if self._filter_mode == "contains":
+            return self._filter_text.lower() in name.lower()
+        if self._filter_mode == "wildcard":
+            pat = self._filter_text.strip()
+            return fnmatch.fnmatch(name.lower(), pat.lower())
+        if self._filter_mode == "regex":
+            if self._regex_invalid or self._regex_obj is None:
+                return False
+            return self._regex_obj.search(name) is not None
+        return True
 
     # --------------------------------------------------------
     # Method: lessThan
@@ -392,6 +711,16 @@ class FileSortFilterProxy(QSortFilterProxyModel):
         elif col == 3:
             return left_entry["mod_time"] < right_entry["mod_time"]
         return False
+
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        src = self.sourceModel()
+        if (
+            src is not None
+            and orientation == Qt.Horizontal
+            and role == Qt.ToolTipRole
+        ):
+            return src.headerData(section, orientation, role)
+        return super().headerData(section, orientation, role)
 
 
 # ============================================================
@@ -445,9 +774,10 @@ class FileTableView(QTableView):
         self.verticalHeader().setVisible(False)
         self.setSortingEnabled(True)
         self.setFocusPolicy(Qt.StrongFocus)
+        self.setMouseTracking(True)
 
         header = self.horizontalHeader()
-        header.setStretchLastSection(False)
+        header.setStretchLastSection(True)
         header.setSectionsMovable(False)
         header.setHighlightSections(False)
 
@@ -707,6 +1037,7 @@ class FilePanel(QWidget):
 
     pathChanged = pyqtSignal(str)
     pathCopied = pyqtSignal(str)
+    folderCreated = pyqtSignal(str)
     fileDoubleClicked = pyqtSignal(dict)
     selectionChanged = pyqtSignal()
     filesDropped = pyqtSignal(list, str, bool)
@@ -728,6 +1059,7 @@ class FilePanel(QWidget):
         self._path_edit.installEventFilter(self)
         self._filter_edit.installEventFilter(self)
         self._installActivationEventFilters()
+        self._updateFrameStyle()
 
     # --------------------------------------------------------
     # Method: _initUI
@@ -747,14 +1079,22 @@ class FilePanel(QWidget):
         path_layout.setSpacing(4)
 
         self._path_edit = QLineEdit()
+        self._path_edit.setObjectName("panelPathEdit")
         self._path_edit.setPlaceholderText("Enter or paste path, press Enter to go...")
         self._path_edit.setMinimumHeight(NAV_BAR_HEIGHT)
+        self._path_edit.setToolTip(
+            "Address bar\n\n"
+            "Shows the folder open in this panel. Type or paste a path and press Enter "
+            "to navigate. Use the copy/paste buttons to work with the clipboard."
+        )
 
         self._btn_copy_path = QPushButton()
         self._btn_copy_path.setObjectName("navButton")
         self._btn_copy_path.setFixedSize(30, NAV_BAR_HEIGHT)
         self._btn_copy_path.setIconSize(QSize(NAV_ICON_SIZE, NAV_ICON_SIZE))
-        self._btn_copy_path.setToolTip("Copy current path to clipboard")
+        self._btn_copy_path.setToolTip(
+            "Copy path\n\nCopy the current folder path to the clipboard."
+        )
         self._btn_copy_path.setAutoDefault(False)
         self._btn_copy_path.setDefault(False)
         copy_icon = QIcon.fromTheme("edit-copy")
@@ -770,7 +1110,9 @@ class FilePanel(QWidget):
         self._btn_paste_path.setObjectName("navButton")
         self._btn_paste_path.setFixedSize(30, NAV_BAR_HEIGHT)
         self._btn_paste_path.setIconSize(QSize(NAV_ICON_SIZE, NAV_ICON_SIZE))
-        self._btn_paste_path.setToolTip("Paste path from clipboard and go")
+        self._btn_paste_path.setToolTip(
+            "Paste path\n\nPaste a path from the clipboard and navigate to that folder if it exists."
+        )
         self._btn_paste_path.setAutoDefault(False)
         self._btn_paste_path.setDefault(False)
         paste_icon = QIcon.fromTheme("edit-paste")
@@ -786,7 +1128,10 @@ class FilePanel(QWidget):
         self._btn_browse_folder.setObjectName("navButton")
         self._btn_browse_folder.setFixedSize(30, NAV_BAR_HEIGHT)
         self._btn_browse_folder.setIconSize(QSize(NAV_ICON_SIZE, NAV_ICON_SIZE))
-        self._btn_browse_folder.setToolTip("Open current folder in system file explorer")
+        self._btn_browse_folder.setToolTip(
+            "Open in Explorer\n\nOpen this folder in the operating system's file manager "
+            "(Windows Explorer, Finder, etc.)."
+        )
         self._btn_browse_folder.setAutoDefault(False)
         self._btn_browse_folder.setDefault(False)
         self._btn_browse_folder.setIcon(style.standardIcon(QStyle.SP_DirOpenIcon))
@@ -798,7 +1143,12 @@ class FilePanel(QWidget):
         path_layout.addWidget(self._btn_browse_folder)
         layout.addLayout(path_layout)
 
-        # --- Navigation bar (back, forward, up, home, drive, filter) ---
+        # --- Models (needed before filter options menu) ---
+        self._source_model = FileSystemModel(self)
+        self._proxy_model = FileSortFilterProxy(self)
+        self._proxy_model.setSourceModel(self._source_model)
+
+        # --- Navigation bar (back, forward, up, home, new folder, drive, filter…) ---
         nav_layout = QHBoxLayout()
         nav_layout.setSpacing(4)
 
@@ -810,21 +1160,34 @@ class FilePanel(QWidget):
             btn.setAutoDefault(False)
             btn.setDefault(False)
             setattr(self, btn_attr, btn)
-        self._btn_back.setToolTip("Back (Alt+Left)")
+        self._btn_back.setToolTip(
+            "Back\n\nGo to the previous folder in this panel's history. Shortcut: Alt+Left."
+        )
         self._btn_back.setIcon(style.standardIcon(QStyle.SP_ArrowBack))
         self._btn_back.setEnabled(False)
-        self._btn_forward.setToolTip("Forward (Alt+Right)")
+        self._btn_forward.setToolTip(
+            "Forward\n\nGo to the next folder in this panel's history. Shortcut: Alt+Right."
+        )
         self._btn_forward.setIcon(style.standardIcon(QStyle.SP_ArrowForward))
         self._btn_forward.setEnabled(False)
-        self._btn_up.setToolTip("Up one level (Backspace)")
+        self._btn_up.setToolTip(
+            "Up\n\nOpen the parent folder. Shortcut: Backspace."
+        )
         self._btn_up.setIcon(style.standardIcon(QStyle.SP_ArrowUp))
-        self._btn_home.setToolTip("Home folder")
+        self._btn_home.setToolTip(
+            "Home\n\nJump to your user home directory."
+        )
         self._btn_home.setText("\U0001F3E0")
         self._btn_home.clicked.connect(self._goHome)
 
-        self._drive_combo = DrivePickerCombo()
+        self._drive_combo = DrivePickerCombo(
+            on_before_popup=self._refreshDrives if os.name == "nt" else None,
+        )
         self._drive_combo.setObjectName("driveCombo")
-        self._drive_combo.setToolTip("Switch drive")
+        self._drive_combo.setToolTip(
+            "Drive\n\nChoose a drive letter to jump to its root. "
+            "On Windows the list refreshes when you open the menu."
+        )
         self._drive_combo.setFixedSize(58, NAV_BAR_HEIGHT)
         self._drive_combo.setMinimumContentsLength(2)
         self._drive_combo.setEditable(True)
@@ -846,6 +1209,9 @@ class FilePanel(QWidget):
         self._drive_arrow.setCursor(Qt.PointingHandCursor)
         self._drive_arrow.mousePressEvent = self._onDriveArrowClicked
         self._drive_arrow.setVisible(bool(drives))
+        self._drive_arrow.setToolTip(
+            "Open drive list\n\nClick to show the same drive menu as the field beside it."
+        )
 
         self._drive_container = QWidget()
         self._drive_container.setFixedSize(72, NAV_BAR_HEIGHT)
@@ -855,47 +1221,142 @@ class FilePanel(QWidget):
         drive_container_layout.addWidget(self._drive_combo, 0, Qt.AlignVCenter)
         drive_container_layout.addWidget(self._drive_arrow, 0, Qt.AlignVCenter)
 
-        self._btn_refresh_drives = QPushButton()
-        self._btn_refresh_drives.setObjectName("navButton")
-        self._btn_refresh_drives.setFixedSize(30, NAV_BAR_HEIGHT)
-        self._btn_refresh_drives.setIconSize(QSize(NAV_ICON_SIZE - 2, NAV_ICON_SIZE - 2))
-        self._btn_refresh_drives.setToolTip("Refresh drive list (detect USB, external disks)")
-        self._btn_refresh_drives.setAutoDefault(False)
-        self._btn_refresh_drives.setDefault(False)
-        refresh_icon = QIcon.fromTheme("view-refresh")
-        if refresh_icon.isNull():
-            refresh_icon = style.standardIcon(QStyle.SP_BrowserReload)
-        if refresh_icon.isNull():
-            self._btn_refresh_drives.setText("\u27F3")
-        else:
-            self._btn_refresh_drives.setIcon(refresh_icon)
-        self._btn_refresh_drives.clicked.connect(self._refreshDrives)
-        self._btn_refresh_drives.setVisible(os.name == "nt")
-
         self._filter_edit = QLineEdit()
         self._filter_edit.setPlaceholderText("\U0001F50D Filter...")
         self._filter_edit.setMinimumWidth(120)
         self._filter_edit.setMinimumHeight(NAV_BAR_HEIGHT)
         self._filter_edit.setClearButtonEnabled(True)
+        self._filter_edit.setToolTip(
+            "Filter\n\n"
+            "Narrow the file list by name. Use the gear button for match mode "
+            "(contains, wildcard, regex) and the Subfolders checkbox to search below "
+            "the current folder."
+        )
+
+        self._filter_menu = QMenu(self)
+        self._group_match = QActionGroup(self)
+        self._group_match.setExclusive(True)
+        self._act_match_contains = QAction("Contains text", self)
+        self._act_match_contains.setCheckable(True)
+        self._act_match_contains.setChecked(True)
+        self._group_match.addAction(self._act_match_contains)
+        self._act_match_wildcard = QAction("Wildcard (* and ?)", self)
+        self._act_match_wildcard.setCheckable(True)
+        self._group_match.addAction(self._act_match_wildcard)
+        self._act_match_regex = QAction("Regular expression", self)
+        self._act_match_regex.setCheckable(True)
+        self._group_match.addAction(self._act_match_regex)
+        self._act_match_contains.setToolTip(
+            "Contains text\n\nFile or folder name must include the filter text (case-insensitive)."
+        )
+        self._act_match_wildcard.setToolTip(
+            "Wildcard\n\nUse * for any characters and ? for one character (e.g. *.py)."
+        )
+        self._act_match_regex.setToolTip(
+            "Regular expression\n\nPython-style regex matched against the file or folder name."
+        )
+        sec_m = self._filter_menu.addAction("Match name")
+        sec_m.setEnabled(False)
+        self._filter_menu.addAction(self._act_match_contains)
+        self._filter_menu.addAction(self._act_match_wildcard)
+        self._filter_menu.addAction(self._act_match_regex)
+        self._group_match.triggered.connect(self._onFilterMatchAction)
+
+        self._group_kind = QActionGroup(self)
+        self._group_kind.setExclusive(True)
+        self._act_kind_all = QAction("All items", self)
+        self._act_kind_all.setCheckable(True)
+        self._act_kind_all.setChecked(True)
+        self._group_kind.addAction(self._act_kind_all)
+        self._act_kind_dirs = QAction("Folders only", self)
+        self._act_kind_dirs.setCheckable(True)
+        self._group_kind.addAction(self._act_kind_dirs)
+        self._act_kind_files = QAction("Files only", self)
+        self._act_kind_files.setCheckable(True)
+        self._group_kind.addAction(self._act_kind_files)
+        self._act_kind_all.setToolTip(
+            "All items\n\nApply the filter to both files and folders."
+        )
+        self._act_kind_dirs.setToolTip(
+            "Folders only\n\nShow only directories that match the filter."
+        )
+        self._act_kind_files.setToolTip(
+            "Files only\n\nShow only files that match the filter."
+        )
+        sec_k = self._filter_menu.addAction("Show")
+        sec_k.setEnabled(False)
+        self._filter_menu.addAction(self._act_kind_all)
+        self._filter_menu.addAction(self._act_kind_dirs)
+        self._filter_menu.addAction(self._act_kind_files)
+        self._group_kind.triggered.connect(self._onFilterKindAction)
+
+        self._btn_filter_options = QToolButton()
+        self._btn_filter_options.setObjectName("navButton")
+        self._btn_filter_options.setFixedSize(30, NAV_BAR_HEIGHT)
+        self._btn_filter_options.setIconSize(QSize(NAV_ICON_SIZE, NAV_ICON_SIZE))
+        self._btn_filter_options.setToolTip(
+            "Filter options\n\n"
+            "Choose how names are matched (contains, wildcard, or regex) and whether to "
+            "list only files, only folders, or both."
+        )
+        self._btn_filter_options.setPopupMode(QToolButton.InstantPopup)
+        self._btn_filter_options.setMenu(self._filter_menu)
+        self._btn_filter_options.setAutoRaise(True)
+        filter_opts_icon = QIcon.fromTheme("view-filter")
+        if filter_opts_icon.isNull():
+            filter_opts_icon = style.standardIcon(QStyle.SP_FileDialogContentsView)
+        if filter_opts_icon.isNull():
+            self._btn_filter_options.setText("\u2699")
+        else:
+            self._btn_filter_options.setIcon(filter_opts_icon)
+
+        self._btn_new_folder = QPushButton()
+        self._btn_new_folder.setObjectName("navButton")
+        self._btn_new_folder.setFixedSize(30, NAV_BAR_HEIGHT)
+        self._btn_new_folder.setIconSize(QSize(NAV_ICON_SIZE, NAV_ICON_SIZE))
+        self._btn_new_folder.setToolTip(
+            "New folder\n\n"
+            "Create a new subfolder in the folder shown in this panel. "
+            "Shortcut: F8 when this panel is active."
+        )
+        self._btn_new_folder.setAutoDefault(False)
+        self._btn_new_folder.setDefault(False)
+        new_folder_icon = QIcon.fromTheme("folder-new")
+        if new_folder_icon.isNull():
+            new_folder_icon = style.standardIcon(QStyle.SP_FileDialogNewFolder)
+        if new_folder_icon.isNull():
+            self._btn_new_folder.setText("\U0001F4C1+")
+        else:
+            self._btn_new_folder.setIcon(new_folder_icon)
 
         nav_layout.addWidget(self._btn_back)
         nav_layout.addWidget(self._btn_forward)
         nav_layout.addWidget(self._btn_up)
         nav_layout.addWidget(self._btn_home)
+        nav_layout.addWidget(self._btn_new_folder)
         nav_layout.addWidget(self._drive_container)
-        nav_layout.addWidget(self._btn_refresh_drives)
         nav_layout.addWidget(self._filter_edit, 1)
+        self._chk_filter_subfolders = QCheckBox("Subfolders")
+        self._chk_filter_subfolders.setObjectName("filterSubfoldersCheck")
+        self._chk_filter_subfolders.setToolTip(
+            "Search subfolders\n\n"
+            "When checked, the list includes items in all subdirectories under the current "
+            "path. This can be slow in very large folder trees."
+        )
+        self._chk_filter_subfolders.stateChanged.connect(self._onSubfoldersFilterToggled)
+        nav_layout.addWidget(self._chk_filter_subfolders, 0, Qt.AlignVCenter)
+        nav_layout.addWidget(self._btn_filter_options)
 
         layout.addLayout(nav_layout)
 
         # --- File table ---
-        self._source_model = FileSystemModel(self)
-        self._proxy_model = FileSortFilterProxy(self)
-        self._proxy_model.setSourceModel(self._source_model)
-
         self._table = FileTableView(self)
+        self._table.setObjectName("panelFileTable")
         self._table.setModel(self._proxy_model)
         self._table.sortByColumn(0, Qt.AscendingOrder)
+        hdr = self._table.horizontalHeader()
+        hdr.setContextMenuPolicy(Qt.CustomContextMenu)
+        hdr.customContextMenuRequested.connect(self._onTableHeaderContextMenu)
 
         layout.addWidget(self._table, 1)
 
@@ -906,17 +1367,39 @@ class FilePanel(QWidget):
 
         self._frame = self
         self._updateFrameStyle()
+        self._updateFilterPlaceholder()
 
     # --------------------------------------------------------
-    # Column width persistence (key order matches settings.json)
+    # Column width persistence (first three columns; settings.json)
+    # Last column ("Date Modified") stretches to the pane edge — not persisted.
     # --------------------------------------------------------
-    COLUMN_KEYS = ("name", "size", "type", "date_modified")
+    COLUMN_WIDTH_KEYS = ("name", "size", "type")
+    COLUMN_VISIBILITY_KEYS = ("name", "size", "type", "date_modified")
+
+    def applyColumnVisibility(self, vis_dict):
+        """Show/hide columns from saved state (keys: name, size, type, date_modified)."""
+        if not vis_dict:
+            return
+        for col, key in enumerate(self.COLUMN_VISIBILITY_KEYS):
+            if col >= self._source_model.columnCount():
+                break
+            v = vis_dict.get(key)
+            if v is not None:
+                self._table.setColumnHidden(col, not bool(v))
+
+    def getColumnVisibility(self):
+        """Return visibility flags for each column."""
+        return {
+            key: not self._table.isColumnHidden(col)
+            for col, key in enumerate(self.COLUMN_VISIBILITY_KEYS)
+            if col < self._source_model.columnCount()
+        }
 
     def applyColumnWidths(self, widths_dict):
-        """Apply saved column widths. widths_dict: e.g. {'name': 300, 'size': 100, ...}"""
+        """Apply saved widths for name/size/type. Date column fills remaining width."""
         if not widths_dict:
             return
-        for col, key in enumerate(self.COLUMN_KEYS):
+        for col, key in enumerate(self.COLUMN_WIDTH_KEYS):
             if col >= self._source_model.columnCount():
                 break
             w = widths_dict.get(key)
@@ -924,10 +1407,10 @@ class FilePanel(QWidget):
                 self._table.setColumnWidth(col, int(w))
 
     def getColumnWidths(self):
-        """Return current column widths as a dict for saving to settings."""
+        """Return fixed column widths for saving (last column stretches; omitted)."""
         return {
             key: self._table.columnWidth(col)
-            for col, key in enumerate(self.COLUMN_KEYS)
+            for col, key in enumerate(self.COLUMN_WIDTH_KEYS)
             if col < self._source_model.columnCount()
         }
 
@@ -938,6 +1421,7 @@ class FilePanel(QWidget):
         self._btn_back.clicked.connect(self.goBack)
         self._btn_forward.clicked.connect(self.goForward)
         self._btn_up.clicked.connect(self.goUp)
+        self._btn_new_folder.clicked.connect(self.createNewFolder)
         self._path_edit.returnPressed.connect(self._onPathEdited)
         self._filter_edit.textChanged.connect(self._onFilterChanged)
         self._table.doubleClicked.connect(self._onItemDoubleClicked)
@@ -968,9 +1452,12 @@ class FilePanel(QWidget):
             self._btn_forward,
             self._btn_up,
             self._btn_home,
+            self._chk_filter_subfolders,
+            self._btn_filter_options,
+            self._btn_new_folder,
             self._drive_combo,
             self._drive_arrow,
-            self._btn_refresh_drives,
+            self._table.horizontalHeader(),
         ]
 
         combo_line_edit = self._drive_combo.lineEdit()
@@ -1027,6 +1514,33 @@ class FilePanel(QWidget):
         if current:
             self._source_model.loadDirectory(current)
             self._updateStatusLabel()
+
+    # --------------------------------------------------------
+    # Method: createNewFolder
+    # Purpose: Prompts for a name and creates a subfolder in this
+    #          panel's current directory (same behavior as F8 for
+    #          the active panel).
+    # --------------------------------------------------------
+    def createNewFolder(self):
+        current_path = self.currentPath()
+        if not current_path:
+            return
+        dlg_parent = self.window()
+        name, ok = QInputDialog.getText(
+            dlg_parent, "New Folder", "Folder name:",
+        )
+        if not ok or not name.strip():
+            return
+        folder_name = name.strip()
+        new_path = os.path.join(current_path, folder_name)
+        try:
+            os.makedirs(new_path, exist_ok=True)
+            self.refresh()
+            self.folderCreated.emit(folder_name)
+        except OSError as e:
+            QMessageBox.warning(
+                dlg_parent, "Error", f"Could not create folder:\n{e}"
+            )
 
     # --------------------------------------------------------
     # Method: currentPath
@@ -1130,6 +1644,7 @@ class FilePanel(QWidget):
         self._rename_committed = False
         self._rename_source_row = source_index.row()
         self._rename_old_name = entry["name"]
+        self._rename_old_full_path = entry["full_path"]
 
         self._rename_edit = _RenameLineEdit(self._table.viewport())
         rect = self._table.visualRect(name_index)
@@ -1140,7 +1655,7 @@ class FilePanel(QWidget):
         )
         self._rename_edit.setText(entry["name"])
 
-        name_part = entry["name"]
+        name_part = os.path.basename(entry["name"])
         dot_pos = name_part.rfind(".")
         if dot_pos > 0 and not entry["is_dir"]:
             self._rename_edit.setSelection(0, dot_pos)
@@ -1175,12 +1690,20 @@ class FilePanel(QWidget):
             return
 
         current_dir = self._source_model.currentPath()
-        old_path = os.path.join(current_dir, self._rename_old_name)
-        new_path = os.path.join(current_dir, new_name)
+        old_path = getattr(self, "_rename_old_full_path", None) or path_under_root(
+            current_dir, self._rename_old_name
+        )
+        new_path = path_under_root(current_dir, new_name)
 
         if os.path.exists(new_path) and os.path.normcase(new_path) != os.path.normcase(old_path):
-            new_name = self._resolveNameConflict(current_dir, new_name)
-            new_path = os.path.join(current_dir, new_name)
+            parent = os.path.dirname(new_path)
+            base = os.path.basename(new_path)
+            new_base = self._resolveNameConflict(parent, base)
+            new_path = os.path.join(parent, new_base)
+            try:
+                new_name = os.path.relpath(new_path, current_dir)
+            except ValueError:
+                new_name = new_base
 
         try:
             os.rename(old_path, new_path)
@@ -1232,10 +1755,20 @@ class FilePanel(QWidget):
             "current_path": self._source_model.currentPath(),
             "history": self._history,
             "column_widths": self.getColumnWidths(),
+            "column_visibility": self.getColumnVisibility(),
+            "filter_mode": self._proxy_model.filterMode(),
+            "filter_kind": self._proxy_model.entryKindFilter(),
+            "filter_text": self._filter_edit.text(),
+            "filter_include_subfolders": self._chk_filter_subfolders.isChecked(),
         }
 
     def restoreHistoryData(self, data):
         self._history = data.get("history", [])
+        self._chk_filter_subfolders.blockSignals(True)
+        self._chk_filter_subfolders.setChecked(data.get("filter_include_subfolders", False))
+        self._chk_filter_subfolders.blockSignals(False)
+        self._source_model.setRecursive(self._chk_filter_subfolders.isChecked())
+
         current = data.get("current_path", "")
         if current and os.path.isdir(current):
             self._history_index = len(self._history) - 1
@@ -1243,6 +1776,20 @@ class FilePanel(QWidget):
         column_widths = data.get("column_widths")
         if column_widths:
             self.applyColumnWidths(column_widths)
+        column_visibility = data.get("column_visibility")
+        if column_visibility:
+            self.applyColumnVisibility(column_visibility)
+        fm = data.get("filter_mode")
+        if fm in ("contains", "wildcard", "regex"):
+            self._proxy_model.setFilterMode(fm)
+        fk = data.get("filter_kind")
+        if fk in ("all", "dirs", "files"):
+            self._proxy_model.setEntryKindFilter(fk)
+        self._filter_edit.blockSignals(True)
+        self._filter_edit.setText(data.get("filter_text") or "")
+        self._filter_edit.blockSignals(False)
+        self._proxy_model.setFilterText(self._filter_edit.text())
+        self._syncFilterActionsFromModel()
 
     # --------------------------------------------------------
     # Focus handling for active panel detection
@@ -1270,9 +1817,12 @@ class FilePanel(QWidget):
             self._btn_forward,
             self._btn_up,
             self._btn_home,
+            self._chk_filter_subfolders,
+            self._btn_filter_options,
+            self._btn_new_folder,
             self._drive_combo,
             self._drive_arrow,
-            self._btn_refresh_drives,
+            self._table.horizontalHeader(),
             self._drive_combo.lineEdit(),
         ):
             self.activated.emit()
@@ -1366,7 +1916,10 @@ class FilePanel(QWidget):
             self._drive_combo.showPopup()
 
     def _refreshDrives(self):
-        """Re-scan for drives (USB, external disks) and update the dropdown."""
+        """Re-scan for drives (USB, external disks) and update the dropdown.
+
+        On Windows, called automatically when the drive menu is opened.
+        """
         if not self._drive_combo.isVisible() and os.name != "nt":
             return
         drives = getWindowsDrives()
@@ -1401,6 +1954,126 @@ class FilePanel(QWidget):
         home = os.path.expanduser("~")
         if home and os.path.isdir(home):
             self.navigateTo(home)
+
+    # --------------------------------------------------------
+    # Column header context menu (show/hide columns)
+    # --------------------------------------------------------
+    def _onTableHeaderContextMenu(self, pos):
+        menu = QMenu(self)
+        n = self._source_model.columnCount()
+        for col in range(n):
+            label = FileSystemModel.COLUMNS[col]
+            act = QAction(label, menu)
+            act.setCheckable(True)
+            act.setChecked(not self._table.isColumnHidden(col))
+            act.toggled.connect(
+                lambda checked, c=col, a=act: self._applyColumnVisibilityToggle(c, checked, a)
+            )
+            menu.addAction(act)
+        menu.addSeparator()
+        act_even = QAction("Distribute columns evenly", menu)
+        act_even.setToolTip(
+            "Distribute columns evenly\n\n"
+            "Resize all visible columns to the same width so together they fill the panel."
+        )
+        act_even.triggered.connect(self._distributeColumnsEvenly)
+        menu.addAction(act_even)
+        hdr = self._table.horizontalHeader()
+        menu.exec_(hdr.mapToGlobal(pos))
+
+    def _applyColumnVisibilityToggle(self, col, visible, action):
+        if not visible:
+            others = sum(
+                1
+                for c in range(self._source_model.columnCount())
+                if c != col and not self._table.isColumnHidden(c)
+            )
+            if others == 0:
+                QMessageBox.information(
+                    self,
+                    "Columns",
+                    "At least one column must stay visible.",
+                )
+                action.blockSignals(True)
+                action.setChecked(True)
+                action.blockSignals(False)
+                return
+        self._table.setColumnHidden(col, not visible)
+
+    def _distributeColumnsEvenly(self):
+        """Give each visible column an equal share of the table viewport width."""
+        hdr = self._table.horizontalHeader()
+        n = self._source_model.columnCount()
+        visible = [c for c in range(n) if not self._table.isColumnHidden(c)]
+        m = len(visible)
+        if m == 0:
+            return
+        vw = max(1, self._table.viewport().width())
+        min_w = max(hdr.minimumSectionSize(), 24)
+        hdr.setStretchLastSection(False)
+        base = vw // m
+        rem = vw % m
+        for i, col in enumerate(visible):
+            wcol = base + (1 if i < rem else 0)
+            wcol = max(min_w, wcol)
+            self._table.setColumnWidth(col, wcol)
+
+    # --------------------------------------------------------
+    # Filter options menu (match mode + folders/files)
+    # --------------------------------------------------------
+    def _onFilterMatchAction(self, action):
+        if action == self._act_match_contains:
+            self._proxy_model.setFilterMode("contains")
+        elif action == self._act_match_wildcard:
+            self._proxy_model.setFilterMode("wildcard")
+        elif action == self._act_match_regex:
+            self._proxy_model.setFilterMode("regex")
+        self._updateFilterPlaceholder()
+
+    def _onFilterKindAction(self, action):
+        if action == self._act_kind_all:
+            self._proxy_model.setEntryKindFilter("all")
+        elif action == self._act_kind_dirs:
+            self._proxy_model.setEntryKindFilter("dirs")
+        elif action == self._act_kind_files:
+            self._proxy_model.setEntryKindFilter("files")
+        self._updateFilterPlaceholder()
+
+    def _syncFilterActionsFromModel(self):
+        self._group_match.blockSignals(True)
+        mode = self._proxy_model.filterMode()
+        self._act_match_contains.setChecked(mode == "contains")
+        self._act_match_wildcard.setChecked(mode == "wildcard")
+        self._act_match_regex.setChecked(mode == "regex")
+        self._group_match.blockSignals(False)
+        self._group_kind.blockSignals(True)
+        kind = self._proxy_model.entryKindFilter()
+        self._act_kind_all.setChecked(kind == "all")
+        self._act_kind_dirs.setChecked(kind == "dirs")
+        self._act_kind_files.setChecked(kind == "files")
+        self._group_kind.blockSignals(False)
+        self._updateFilterPlaceholder()
+
+    def _onSubfoldersFilterToggled(self, *_args):
+        self._source_model.setRecursive(self._chk_filter_subfolders.isChecked())
+        self._updateFilterPlaceholder()
+
+    def _updateFilterPlaceholder(self):
+        hint = []
+        mode = self._proxy_model.filterMode()
+        kind = self._proxy_model.entryKindFilter()
+        if mode == "wildcard":
+            hint.append("* ?")
+        elif mode == "regex":
+            hint.append("regex")
+        if kind == "dirs":
+            hint.append("folders")
+        elif kind == "files":
+            hint.append("files")
+        if self._chk_filter_subfolders.isChecked():
+            hint.append("subfolders")
+        extra = (" · " + ", ".join(hint)) if hint else ""
+        self._filter_edit.setPlaceholderText(f"\U0001F50D Filter{extra}…")
 
     def _onFilterChanged(self, text):
         self._proxy_model.setFilterText(text)
@@ -1447,8 +2120,9 @@ class FilePanel(QWidget):
             self.setObjectName("filePanel")
         style = self.style()
         if style is not None:
-            style.unpolish(self)
-            style.polish(self)
+            for w in (self, self._path_edit, self._table):
+                style.unpolish(w)
+                style.polish(w)
         self.update()
 
     # --------------------------------------------------------

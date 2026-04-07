@@ -15,13 +15,13 @@ import os
 DEFAULT_SETTINGS = {
     "show_hidden_files": False,
     "confirm_delete": True,
+    "theme_mode": "dark",
     "default_left_path": "",
     "default_right_path": "",
     "column_widths": {
         "name": 300,
         "size": 100,
         "type": 120,
-        "date_modified": 160,
     },
     "window_geometry": {
         "x": 100,
@@ -43,10 +43,30 @@ DEFAULT_STATE = {
     "left_panel": {
         "current_path": "",
         "history": [],
+        "column_visibility": {
+            "name": True,
+            "size": True,
+            "type": True,
+            "date_modified": True,
+        },
+        "filter_mode": "contains",
+        "filter_kind": "all",
+        "filter_text": "",
+        "filter_include_subfolders": False,
     },
     "right_panel": {
         "current_path": "",
         "history": [],
+        "column_visibility": {
+            "name": True,
+            "size": True,
+            "type": True,
+            "date_modified": True,
+        },
+        "filter_mode": "contains",
+        "filter_kind": "all",
+        "filter_text": "",
+        "filter_include_subfolders": False,
     },
     "bookmarks": [],
     "recent_paths": [],

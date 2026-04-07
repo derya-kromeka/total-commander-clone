@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
     QStyle, QTabWidget, QStackedWidget,
 )
 from PyQt5.QtCore import Qt, QUrl, QTimer
-from PyQt5.QtGui import QKeySequence, QDesktopServices, QIcon
+from PyQt5.QtGui import QKeySequence, QDesktopServices, QIcon, QFont
 
 from file_panel import FilePanel
 from file_operations import copyFiles, moveFiles, deleteFiles, renameFile
@@ -29,6 +29,9 @@ from library_manager import LibraryManager
 from settings_manager import SettingsManager
 from windows_shell_clipboard import setFileClipboard
 from app_version import APP_VERSION, APP_NAME, getWindowTitle
+from file_properties_dialog import showFileProperties
+from settings_dialog import SettingsDialog
+from theme import applyTheme
 
 
 # ============================================================
@@ -88,12 +91,25 @@ class FileManagerApp(QMainWindow):
         file_menu = menu_bar.addMenu("&File")
 
         self._action_new_folder = QAction("New Folder\tF8", self)
+        self._action_new_folder.setToolTip(
+            "New folder\n\n"
+            "Create a new folder in the active panel’s current directory. Shortcut: F8."
+        )
         self._action_new_folder.triggered.connect(self._onNewFolder)
         file_menu.addAction(self._action_new_folder)
+
+        self._action_settings = QAction("Settings...", self)
+        self._action_settings.setToolTip(
+            "Settings\n\n"
+            "Theme, font size, hidden files, delete confirmation, and default folder paths for new sessions."
+        )
+        self._action_settings.triggered.connect(self._onOpenSettings)
+        file_menu.addAction(self._action_settings)
 
         file_menu.addSeparator()
 
         self._action_exit = QAction("Exit\tAlt+F4", self)
+        self._action_exit.setToolTip("Exit\n\nClose the application. Shortcut: Alt+F4.")
         self._action_exit.triggered.connect(self.close)
         file_menu.addAction(self._action_exit)
 
@@ -101,30 +117,51 @@ class FileManagerApp(QMainWindow):
         edit_menu = menu_bar.addMenu("&Edit")
 
         self._action_cut = QAction("Cut\tCtrl+X", self)
+        self._action_cut.setToolTip(
+            "Cut\n\n"
+            "Remove selected items and place them on the clipboard for moving. Shortcut: Ctrl+X."
+        )
         self._action_cut.triggered.connect(self._onCut)
         edit_menu.addAction(self._action_cut)
 
         self._action_copy_clip = QAction("Copy\tCtrl+C", self)
+        self._action_copy_clip.setToolTip(
+            "Copy\n\nCopy selected items to the clipboard. Shortcut: Ctrl+C."
+        )
         self._action_copy_clip.triggered.connect(self._onCopyToClipboard)
         edit_menu.addAction(self._action_copy_clip)
 
         self._action_paste = QAction("Paste\tCtrl+V", self)
+        self._action_paste.setToolTip(
+            "Paste\n\n"
+            "Paste cut or copied items into the active panel’s folder. Shortcut: Ctrl+V."
+        )
         self._action_paste.triggered.connect(self._onPaste)
         edit_menu.addAction(self._action_paste)
 
         edit_menu.addSeparator()
 
         self._action_select_all = QAction("Select All\tCtrl+A", self)
+        self._action_select_all.setToolTip(
+            "Select all\n\nSelect every item in the active panel. Shortcut: Ctrl+A."
+        )
         self._action_select_all.triggered.connect(self._onSelectAll)
         edit_menu.addAction(self._action_select_all)
 
         edit_menu.addSeparator()
 
         self._action_rename = QAction("Rename\tF2", self)
+        self._action_rename.setToolTip(
+            "Rename\n\nRename the selected item. Shortcut: F2."
+        )
         self._action_rename.triggered.connect(self._onRename)
         edit_menu.addAction(self._action_rename)
 
         self._action_batch_rename = QAction("Batch Rename...\tCtrl+M", self)
+        self._action_batch_rename.setToolTip(
+            "Batch rename\n\n"
+            "Rename multiple files using patterns and rules. Shortcut: Ctrl+M."
+        )
         self._action_batch_rename.triggered.connect(self._onBatchRename)
         edit_menu.addAction(self._action_batch_rename)
 
@@ -132,12 +169,18 @@ class FileManagerApp(QMainWindow):
         view_menu = menu_bar.addMenu("&View")
 
         self._action_refresh = QAction("Refresh (both panels)", self)
+        self._action_refresh.setToolTip(
+            "Refresh both panels\n\nReload file listings in the left and right panels."
+        )
         self._action_refresh.triggered.connect(self._onRefresh)
         view_menu.addAction(self._action_refresh)
 
         view_menu.addSeparator()
 
         self._action_show_hidden = QAction("Show Hidden Files", self)
+        self._action_show_hidden.setToolTip(
+            "Show hidden files\n\nToggle display of hidden and system items."
+        )
         self._action_show_hidden.setCheckable(True)
         self._action_show_hidden.setChecked(
             self._settings.getSetting("show_hidden_files", False)
@@ -147,24 +190,42 @@ class FileManagerApp(QMainWindow):
 
         view_menu.addSeparator()
         self._action_swap_panes = QAction("Swap Pane Paths\tCtrl+Shift+S", self)
+        self._action_swap_panes.setToolTip(
+            "Swap pane paths\n\n"
+            "Exchange the left and right folder paths. Shortcut: Ctrl+Shift+S."
+        )
         self._action_swap_panes.triggered.connect(self._onSwapPanels)
         view_menu.addAction(self._action_swap_panes)
 
         view_menu.addSeparator()
         self._action_toggle_library_active = QAction("Toggle Library Browser (Active Panel)\tCtrl+Shift+L", self)
+        self._action_toggle_library_active.setToolTip(
+            "Library browser (active panel)\n\n"
+            "Show or hide the library browser in the active panel’s slot. Shortcut: Ctrl+Shift+L."
+        )
         self._action_toggle_library_active.triggered.connect(self._onToggleLibraryBrowserActive)
         view_menu.addAction(self._action_toggle_library_active)
 
         self._action_toggle_library_left = QAction("Toggle Library Browser (Left)", self)
+        self._action_toggle_library_left.setToolTip(
+            "Library browser (left)\n\nShow or hide the library browser in the left panel slot."
+        )
         self._action_toggle_library_left.triggered.connect(lambda: self._toggleLibraryBrowser("left"))
         view_menu.addAction(self._action_toggle_library_left)
 
         self._action_toggle_library_right = QAction("Toggle Library Browser (Right)", self)
+        self._action_toggle_library_right.setToolTip(
+            "Library browser (right)\n\nShow or hide the library browser in the right panel slot."
+        )
         self._action_toggle_library_right.triggered.connect(lambda: self._toggleLibraryBrowser("right"))
         view_menu.addAction(self._action_toggle_library_right)
 
         view_menu.addSeparator()
         self._action_mirror = QAction("Mirror Active Folder to Other Panel\tCtrl+Shift+M", self)
+        self._action_mirror.setToolTip(
+            "Mirror to other panel\n\n"
+            "Open the active panel’s folder in the opposite panel. Shortcut: Ctrl+Shift+M."
+        )
         self._action_mirror.triggered.connect(self._onMirrorToOther)
         view_menu.addAction(self._action_mirror)
 
@@ -176,22 +237,36 @@ class FileManagerApp(QMainWindow):
         libraries_menu = menu_bar.addMenu("&Libraries")
 
         self._action_add_library_root = QAction("Add Current Folder To Library...", self)
+        self._action_add_library_root.setToolTip(
+            "Add current folder to library\n\n"
+            "Register the active panel’s folder as a library root for tagging and search."
+        )
         self._action_add_library_root.triggered.connect(self._onAddCurrentFolderToLibrary)
         libraries_menu.addAction(self._action_add_library_root)
 
         self._action_assign_current_folder_tags = QAction("Assign Tags To Current Folder...", self)
+        self._action_assign_current_folder_tags.setToolTip(
+            "Assign tags to current folder\n\n"
+            "Edit tags for the folder shown in the active panel."
+        )
         self._action_assign_current_folder_tags.triggered.connect(self._onAssignCurrentFolderTags)
         libraries_menu.addAction(self._action_assign_current_folder_tags)
 
         libraries_menu.addSeparator()
 
         self._action_scan_libraries = QAction("Scan Library Roots", self)
+        self._action_scan_libraries.setToolTip(
+            "Scan library roots\n\nRescan indexed folders under each library root."
+        )
         self._action_scan_libraries.triggered.connect(self._onScanLibraries)
         libraries_menu.addAction(self._action_scan_libraries)
 
         # --- Help Menu ---
         help_menu = menu_bar.addMenu("&Help")
         self._action_about = QAction("About", self)
+        self._action_about.setToolTip(
+            "About\n\nShow the application name, version, and credits."
+        )
         self._action_about.triggered.connect(self._onAbout)
         help_menu.addAction(self._action_about)
 
@@ -207,52 +282,76 @@ class FileManagerApp(QMainWindow):
         style = QApplication.instance().style()
 
         self._tb_copy = QAction("\U0001F4CB Copy (F6)", self)
-        self._tb_copy.setToolTip("Copy selected files to other panel (F6)")
+        self._tb_copy.setToolTip(
+            "Copy to other panel\n\n"
+            "Copy selected items to the opposite panel. Shortcut: F6."
+        )
         self._tb_copy.triggered.connect(self._onCopyToOther)
         toolbar.addAction(self._tb_copy)
 
         self._tb_move = QAction("\U0001F4E6 Move (F7)", self)
-        self._tb_move.setToolTip("Move selected files to other panel (F7)")
+        self._tb_move.setToolTip(
+            "Move to other panel\n\n"
+            "Move selected items to the opposite panel. Shortcut: F7."
+        )
         self._tb_move.triggered.connect(self._onMoveToOther)
         toolbar.addAction(self._tb_move)
 
         self._tb_delete = QAction("\U0001F5D1 Delete (F9)", self)
-        self._tb_delete.setToolTip("Delete selected files (F9)")
+        self._tb_delete.setToolTip(
+            "Delete\n\nDelete selected items. Shortcut: F9."
+        )
         self._tb_delete.triggered.connect(self._onDelete)
         toolbar.addAction(self._tb_delete)
 
         toolbar.addSeparator()
 
         self._tb_new_folder = QAction("\U0001F4C1 New Folder (F8)", self)
-        self._tb_new_folder.setToolTip("Create new folder (F8)")
+        self._tb_new_folder.setToolTip(
+            "New folder\n\nCreate a folder in the active panel. Shortcut: F8."
+        )
         self._tb_new_folder.triggered.connect(self._onNewFolder)
         toolbar.addAction(self._tb_new_folder)
 
         self._tb_rename = QAction("\u270F Rename (F2)", self)
-        self._tb_rename.setToolTip("Rename selected file (F2)")
+        self._tb_rename.setToolTip(
+            "Rename\n\nRename the selected item. Shortcut: F2."
+        )
         self._tb_rename.triggered.connect(self._onRename)
         toolbar.addAction(self._tb_rename)
 
         self._tb_batch_rename = QAction("\U0001F504 Batch Rename", self)
-        self._tb_batch_rename.setToolTip("Batch rename files in current folder (Ctrl+M)")
+        self._tb_batch_rename.setToolTip(
+            "Batch rename\n\n"
+            "Rename multiple files in the current folder. Shortcut: Ctrl+M."
+        )
         self._tb_batch_rename.triggered.connect(self._onBatchRename)
         toolbar.addAction(self._tb_batch_rename)
 
         toolbar.addSeparator()
 
         self._tb_bookmark = QAction("\u2B50 Bookmark", self)
-        self._tb_bookmark.setToolTip("Bookmark current folder (Ctrl+Shift+B)")
+        self._tb_bookmark.setToolTip(
+            "Bookmark folder\n\n"
+            "Save the active panel’s path as a bookmark. Shortcut: Ctrl+Shift+B."
+        )
         self._tb_bookmark.triggered.connect(self._onAddBookmark)
         toolbar.addAction(self._tb_bookmark)
 
         self._tb_open_explorer = QAction("Explorer", self)
-        self._tb_open_explorer.setToolTip("Open active folder in native file explorer")
+        self._tb_open_explorer.setToolTip(
+            "Open in Explorer\n\n"
+            "Open the active panel’s folder in the system file manager."
+        )
         self._tb_open_explorer.setIcon(style.standardIcon(QStyle.SP_DirOpenIcon))
         self._tb_open_explorer.triggered.connect(self._onOpenActivePathInExplorer)
         toolbar.addAction(self._tb_open_explorer)
 
         self._tb_refresh = QAction("\U0001F504 Refresh", self)
-        self._tb_refresh.setToolTip("Refresh both panels (F5 refreshes active panel only)")
+        self._tb_refresh.setToolTip(
+            "Refresh both panels\n\n"
+            "Reload both panels. F5 refreshes only the active panel."
+        )
         self._tb_refresh.triggered.connect(self._onRefresh)
         toolbar.addAction(self._tb_refresh)
 
@@ -311,6 +410,14 @@ class FileManagerApp(QMainWindow):
         self._sidebar_tabs.setObjectName("sidebarTabs")
         self._sidebar_tabs.addTab(self._bookmarks_panel, "Bookmarks")
         self._sidebar_tabs.addTab(self._libraries_panel, "Libraries")
+        self._sidebar_tabs.setTabToolTip(
+            0,
+            "Bookmarks\n\nQuick access to saved folder and file shortcuts.",
+        )
+        self._sidebar_tabs.setTabToolTip(
+            1,
+            "Libraries\n\nTag-based library roots and matching folders.",
+        )
         self._sidebar_tabs.setMinimumWidth(100)
         self._sidebar_tabs.setMaximumWidth(400)
 
@@ -345,6 +452,9 @@ class FileManagerApp(QMainWindow):
             lambda p: self._showStatus(f"Copied path: {p}")
         )
 
+        self._left_panel.folderCreated.connect(self._onFolderCreatedFromPanel)
+        self._right_panel.folderCreated.connect(self._onFolderCreatedFromPanel)
+
         self._left_panel.selectionChanged.connect(self._updateStatusBar)
         self._right_panel.selectionChanged.connect(self._updateStatusBar)
 
@@ -375,7 +485,10 @@ class FileManagerApp(QMainWindow):
         layout.addStretch(1)
 
         self._btn_copy_dir = QPushButton()
-        self._btn_copy_dir.setToolTip("Copy selected to the other panel (F6)")
+        self._btn_copy_dir.setToolTip(
+            "Copy to other panel\n\n"
+            "Copy selected items from the active panel to the opposite panel. Shortcut: F6."
+        )
         self._btn_copy_dir.setFocusPolicy(Qt.NoFocus)
         self._btn_copy_dir.clicked.connect(self._onCopyToOther)
         layout.addWidget(self._btn_copy_dir)
@@ -387,7 +500,10 @@ class FileManagerApp(QMainWindow):
         layout.addSpacing(12)
 
         self._btn_move_dir = QPushButton()
-        self._btn_move_dir.setToolTip("Move selected to the other panel (F7)")
+        self._btn_move_dir.setToolTip(
+            "Move to other panel\n\n"
+            "Move selected items from the active panel to the opposite panel. Shortcut: F7."
+        )
         self._btn_move_dir.setFocusPolicy(Qt.NoFocus)
         self._btn_move_dir.clicked.connect(self._onMoveToOther)
         layout.addWidget(self._btn_move_dir)
@@ -399,7 +515,10 @@ class FileManagerApp(QMainWindow):
         layout.addSpacing(16)
 
         self._btn_swap = QPushButton("\u21C4")
-        self._btn_swap.setToolTip("Swap pane paths (Ctrl+Shift+S)")
+        self._btn_swap.setToolTip(
+            "Swap panes\n\n"
+            "Exchange the left and right folder paths. Shortcut: Ctrl+Shift+S."
+        )
         self._btn_swap.setFocusPolicy(Qt.NoFocus)
         self._btn_swap.clicked.connect(self._onSwapPanels)
         layout.addWidget(self._btn_swap)
@@ -411,7 +530,10 @@ class FileManagerApp(QMainWindow):
         layout.addSpacing(16)
 
         self._btn_mirror = QPushButton("\u229C")
-        self._btn_mirror.setToolTip("Open active folder in the other panel (Ctrl+Shift+M)")
+        self._btn_mirror.setToolTip(
+            "Mirror to other panel\n\n"
+            "Open the active panel’s folder in the opposite panel. Shortcut: Ctrl+Shift+M."
+        )
         self._btn_mirror.setFocusPolicy(Qt.NoFocus)
         self._btn_mirror.clicked.connect(self._onMirrorToOther)
         layout.addWidget(self._btn_mirror)
@@ -434,13 +556,25 @@ class FileManagerApp(QMainWindow):
         if self._active_panel == self._left_panel:
             self._btn_copy_dir.setText("\u27A1")
             self._btn_move_dir.setText("\u27A1")
-            self._btn_copy_dir.setToolTip("Copy selected  Left \u27A1 Right  (F6)")
-            self._btn_move_dir.setToolTip("Move selected  Left \u27A1 Right  (F7)")
+            self._btn_copy_dir.setToolTip(
+                "Copy to other panel\n\n"
+                "Copy selected items to the right panel. Flow: Left \u2192 Right. Shortcut: F6."
+            )
+            self._btn_move_dir.setToolTip(
+                "Move to other panel\n\n"
+                "Move selected items to the right panel. Flow: Left \u2192 Right. Shortcut: F7."
+            )
         else:
             self._btn_copy_dir.setText("\u2B05")
             self._btn_move_dir.setText("\u2B05")
-            self._btn_copy_dir.setToolTip("Copy selected  Right \u27A1 Left  (F6)")
-            self._btn_move_dir.setToolTip("Move selected  Right \u27A1 Left  (F7)")
+            self._btn_copy_dir.setToolTip(
+                "Copy to other panel\n\n"
+                "Copy selected items to the left panel. Flow: Right \u2192 Left. Shortcut: F6."
+            )
+            self._btn_move_dir.setToolTip(
+                "Move to other panel\n\n"
+                "Move selected items to the left panel. Flow: Right \u2192 Left. Shortcut: F7."
+            )
 
     # --------------------------------------------------------
     # Method: _initBottomBar
@@ -457,16 +591,41 @@ class FileManagerApp(QMainWindow):
         layout.setSpacing(4)
 
         button_defs = [
-            ("F2 Rename",       self._onRename),
-            ("F5 Refresh",      self._onRefreshActivePanel),
-            ("F6 Copy",         self._onCopyToOther),
-            ("F7 Move",         self._onMoveToOther),
-            ("F8 NewFolder",    self._onNewFolder),
-            ("F9 Delete",       self._onDelete),
+            (
+                "F2 Rename",
+                self._onRename,
+                "Rename\n\nRename the selected item in the active panel. Shortcut: F2.",
+            ),
+            (
+                "F5 Refresh",
+                self._onRefreshActivePanel,
+                "Refresh\n\nReload the listing for the active panel only. Shortcut: F5.",
+            ),
+            (
+                "F6 Copy",
+                self._onCopyToOther,
+                "Copy\n\nCopy selected items to the opposite panel. Shortcut: F6.",
+            ),
+            (
+                "F7 Move",
+                self._onMoveToOther,
+                "Move\n\nMove selected items to the opposite panel. Shortcut: F7.",
+            ),
+            (
+                "F8 NewFolder",
+                self._onNewFolder,
+                "New folder\n\nCreate a folder in the active panel. Shortcut: F8.",
+            ),
+            (
+                "F9 Delete",
+                self._onDelete,
+                "Delete\n\nDelete selected items. Shortcut: F9.",
+            ),
         ]
 
-        for text, callback in button_defs:
+        for text, callback, tip in button_defs:
             btn = QPushButton(text)
+            btn.setToolTip(tip)
             btn.clicked.connect(callback)
             btn.setFocusPolicy(Qt.NoFocus)
             layout.addWidget(btn, 1)
@@ -651,24 +810,13 @@ class FileManagerApp(QMainWindow):
             return
         self._active_panel.startRename()
 
+    def _onFolderCreatedFromPanel(self, folder_name):
+        self._showStatus(f"Created folder: {folder_name}")
+
     def _onNewFolder(self):
         if not self._active_panel:
             return
-        current_path = self._active_panel.currentPath()
-        if not current_path:
-            return
-
-        name, ok = QInputDialog.getText(
-            self, "New Folder", "Folder name:",
-        )
-        if ok and name.strip():
-            new_path = os.path.join(current_path, name.strip())
-            try:
-                os.makedirs(new_path, exist_ok=True)
-                self._active_panel.refresh()
-                self._showStatus(f"Created folder: {name.strip()}")
-            except OSError as e:
-                QMessageBox.warning(self, "Error", f"Could not create folder:\n{e}")
+        self._active_panel.createNewFolder()
 
     # --------------------------------------------------------
     # Batch Rename: Opens the multi-rename dialog.
@@ -827,6 +975,26 @@ class FileManagerApp(QMainWindow):
         self._left_panel.setShowHidden(checked)
         self._right_panel.setShowHidden(checked)
 
+    def _onOpenSettings(self):
+        dialog = SettingsDialog(self._settings, self)
+        if dialog.exec_() != QDialog.Accepted:
+            return
+
+        values = dialog.values()
+        for key, value in values.items():
+            self._settings.setSetting(key, value)
+
+        self._action_show_hidden.setChecked(values["show_hidden_files"])
+        self._left_panel.setShowHidden(values["show_hidden_files"])
+        self._right_panel.setShowHidden(values["show_hidden_files"])
+
+        app = QApplication.instance()
+        app.setFont(QFont("Segoe UI", values["font_size"]))
+        applyTheme(app, values["theme_mode"])
+
+        self._settings.saveSettings()
+        self._showStatus("Settings saved.")
+
     # --------------------------------------------------------
     # Bookmarks
     # --------------------------------------------------------
@@ -866,6 +1034,10 @@ class FileManagerApp(QMainWindow):
         self._bookmarks_menu.clear()
 
         add_action = QAction("Add Current Folder...", self)
+        add_action.setToolTip(
+            "Add bookmark\n\n"
+            "Save the active panel’s current folder as a named bookmark."
+        )
         add_action.triggered.connect(self._onAddBookmark)
         self._bookmarks_menu.addAction(add_action)
 
@@ -874,6 +1046,9 @@ class FileManagerApp(QMainWindow):
         bookmarks = self._settings.getBookmarks()
         if not bookmarks:
             empty_action = QAction("(no bookmarks)", self)
+            empty_action.setToolTip(
+                "No bookmarks\n\nUse “Add Current Folder…” to create your first bookmark."
+            )
             empty_action.setEnabled(False)
             self._bookmarks_menu.addAction(empty_action)
         else:
@@ -881,12 +1056,19 @@ class FileManagerApp(QMainWindow):
                 bm_name = bm.get("name", "")
                 bm_path = bm.get("path", "")
                 action = QAction(f"{bm_name}  \u2192  {bm_path}", self)
+                action.setToolTip(
+                    "Go to bookmark\n\n"
+                    f"Open this path: {bm_path}"
+                )
                 action.setData(bm_path)
                 action.triggered.connect(self._onBookmarkClicked)
                 self._bookmarks_menu.addAction(action)
 
             self._bookmarks_menu.addSeparator()
             manage_action = QAction("Remove a Bookmark...", self)
+            manage_action.setToolTip(
+                "Remove bookmark\n\nChoose a bookmark to delete from the list."
+            )
             manage_action.triggered.connect(self._onRemoveBookmark)
             self._bookmarks_menu.addAction(manage_action)
 
@@ -1165,22 +1347,40 @@ class FileManagerApp(QMainWindow):
         if single_selection:
             entry = entries[0]
             open_action = menu.addAction("Open")
+            open_action.setToolTip(
+                "Open\n\n"
+                "Open the folder in this panel or launch the file with its default app."
+            )
             open_action.triggered.connect(lambda: self._onContextOpen(entry))
 
             if not entry["is_dir"]:
                 open_with_action = menu.addAction("Open With...")
+                open_with_action.setToolTip(
+                    "Open with\n\n"
+                    "Choose another application to open this file (Windows “Open with” dialog)."
+                )
                 open_with_action.triggered.connect(lambda: self._onOpenWith(entry))
 
             menu.addSeparator()
 
         if has_selection:
             cut_action = menu.addAction("Cut\tCtrl+X")
+            cut_action.setToolTip(
+                "Cut\n\n"
+                "Remove selected items and place them on the clipboard. Shortcut: Ctrl+X."
+            )
             cut_action.triggered.connect(self._onCut)
 
             copy_action = menu.addAction("Copy\tCtrl+C")
+            copy_action.setToolTip(
+                "Copy\n\nCopy selected items to the clipboard. Shortcut: Ctrl+C."
+            )
             copy_action.triggered.connect(self._onCopyToClipboard)
 
         paste_action = menu.addAction("Paste\tCtrl+V")
+        paste_action.setToolTip(
+            "Paste\n\nPaste cut or copied items here. Shortcut: Ctrl+V."
+        )
         paste_action.triggered.connect(self._onPaste)
         paste_action.setEnabled(bool(self._clipboard_paths))
 
@@ -1188,53 +1388,86 @@ class FileManagerApp(QMainWindow):
 
         if has_selection:
             copy_other_action = menu.addAction("Copy to Other Panel\tF6")
+            copy_other_action.setToolTip(
+                "Copy to other panel\n\nCopy selected items to the opposite panel. Shortcut: F6."
+            )
             copy_other_action.triggered.connect(self._onCopyToOther)
 
             move_other_action = menu.addAction("Move to Other Panel\tF7")
+            move_other_action.setToolTip(
+                "Move to other panel\n\nMove selected items to the opposite panel. Shortcut: F7."
+            )
             move_other_action.triggered.connect(self._onMoveToOther)
 
             menu.addSeparator()
 
         if single_selection:
             rename_action = menu.addAction("Rename\tF2")
+            rename_action.setToolTip(
+                "Rename\n\nRename the selected item. Shortcut: F2."
+            )
             rename_action.triggered.connect(self._onRename)
 
         if has_selection:
             delete_action = menu.addAction("Delete\tF9")
+            delete_action.setToolTip(
+                "Delete\n\nDelete selected items. Shortcut: F9."
+            )
             delete_action.triggered.connect(self._onDelete)
 
         menu.addSeparator()
 
         new_folder_action = menu.addAction("New Folder\tF8")
+        new_folder_action.setToolTip(
+            "New folder\n\nCreate a folder in the current directory. Shortcut: F8."
+        )
         new_folder_action.triggered.connect(self._onNewFolder)
 
         batch_rename_action = menu.addAction("Batch Rename...\tCtrl+M")
+        batch_rename_action.setToolTip(
+            "Batch rename\n\nRename multiple files using patterns. Shortcut: Ctrl+M."
+        )
         batch_rename_action.triggered.connect(self._onBatchRename)
 
         menu.addSeparator()
 
         if single_selection:
             copy_path_action = menu.addAction("Copy Path to Clipboard")
+            copy_path_action.setToolTip(
+                "Copy path\n\nCopy the full path of this item as text."
+            )
             copy_path_action.triggered.connect(
                 lambda: self._copyPathToClipboard(entries[0]["full_path"])
             )
 
         if single_selection and entries[0]["is_dir"]:
             add_to_library_action = menu.addAction("Add To Library...")
+            add_to_library_action.setToolTip(
+                "Add to library\n\nRegister this folder as a library root."
+            )
             add_to_library_action.triggered.connect(
                 lambda: self._onAddFolderToLibrary(entries[0]["full_path"])
             )
 
             assign_tags_action = menu.addAction("Assign Tags...")
+            assign_tags_action.setToolTip(
+                "Assign tags\n\nEdit tags for this folder in the library system."
+            )
             assign_tags_action.triggered.connect(
                 lambda: self._onAssignFolderTags(entries[0]["full_path"])
             )
 
         bookmark_action = menu.addAction("Bookmark This Folder")
+        bookmark_action.setToolTip(
+            "Bookmark folder\n\nSave the current folder as a bookmark."
+        )
         bookmark_action.triggered.connect(self._onAddBookmark)
 
         if single_selection and not entries[0]["is_dir"]:
             bookmark_file_action = menu.addAction("Bookmark This File")
+            bookmark_file_action.setToolTip(
+                "Bookmark file\n\nSave this file path as a bookmark (double-click opens it)."
+            )
             bookmark_file_action.triggered.connect(
                 lambda: self._onAddFileBookmark(entries[0])
             )
@@ -1242,6 +1475,11 @@ class FileManagerApp(QMainWindow):
         if single_selection:
             menu.addSeparator()
             props_action = menu.addAction("Properties")
+            props_action.setToolTip(
+                "Properties\n\n"
+                "Open a tabbed dialog: General (location, size, dates), Details (MIME, permissions), "
+                "and checksums for files."
+            )
             props_action.triggered.connect(lambda: self._showProperties(entries[0]))
 
         menu.exec_(table.viewport().mapToGlobal(pos))
@@ -1295,37 +1533,7 @@ class FileManagerApp(QMainWindow):
     # Properties Dialog
     # --------------------------------------------------------
     def _showProperties(self, entry):
-        from datetime import datetime
-
-        msg = []
-        msg.append(f"Name: {entry['name']}")
-        msg.append(f"Path: {entry['full_path']}")
-        msg.append(f"Type: {entry['type']}")
-        if not entry['is_dir']:
-            msg.append(f"Size: {self._formatSizeLong(entry['size'])}")
-
-        dt = datetime.fromtimestamp(entry['mod_time'])
-        msg.append(f"Modified: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
-
-        try:
-            st = os.stat(entry['full_path'])
-            ct = datetime.fromtimestamp(st.st_ctime)
-            msg.append(f"Created: {ct.strftime('%Y-%m-%d %H:%M:%S')}")
-        except OSError:
-            pass
-
-        QMessageBox.information(self, "Properties", "\n".join(msg))
-
-    def _formatSizeLong(self, size_bytes):
-        if size_bytes < 0:
-            return "N/A"
-        for unit in ("bytes", "KB", "MB", "GB", "TB"):
-            if abs(size_bytes) < 1024.0:
-                if unit == "bytes":
-                    return f"{size_bytes:,.0f} bytes"
-                return f"{size_bytes:,.1f} {unit}"
-            size_bytes /= 1024.0
-        return f"{size_bytes:,.1f} PB"
+        showFileProperties(entry, self)
 
     # --------------------------------------------------------
     # Drag-and-Drop from Panel

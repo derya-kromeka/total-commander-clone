@@ -110,7 +110,9 @@ class LibraryBrowserPanel(QWidget):
 
         self._btn_switch = QPushButton("\U0001F4C2 File Panel")
         self._btn_switch.setObjectName("libraryToolButton")
-        self._btn_switch.setToolTip("Switch back to file panel view")
+        self._btn_switch.setToolTip(
+            "File panel\n\nReturn this side to the normal folder browser."
+        )
         self._btn_switch.clicked.connect(self.switchToFilePanelRequested.emit)
         title_row.addWidget(self._btn_switch)
 
@@ -124,21 +126,34 @@ class LibraryBrowserPanel(QWidget):
 
         self._library_combo = QComboBox()
         self._library_combo.setMinimumWidth(120)
+        self._library_combo.setToolTip(
+            "Library\n\nChoose which library’s tags and folders to browse."
+        )
         self._library_combo.currentIndexChanged.connect(self._onLibraryChanged)
         selector_row.addWidget(self._library_combo, 1)
 
         self._btn_add_root = QPushButton("Add Root")
         self._btn_add_root.setObjectName("libraryToolButton")
+        self._btn_add_root.setToolTip(
+            "Add root\n\n"
+            "Register the active panel’s folder as a root for the selected library."
+        )
         self._btn_add_root.clicked.connect(self.addLibraryRequested.emit)
         selector_row.addWidget(self._btn_add_root)
 
         self._btn_scan = QPushButton("Scan")
         self._btn_scan.setObjectName("libraryToolButton")
+        self._btn_scan.setToolTip(
+            "Scan\n\nRescan indexed folders for the selected library."
+        )
         self._btn_scan.clicked.connect(self.scanLibrariesRequested.emit)
         selector_row.addWidget(self._btn_scan)
 
         self._btn_assign_tags = QPushButton("Assign Tags")
         self._btn_assign_tags.setObjectName("libraryToolButton")
+        self._btn_assign_tags.setToolTip(
+            "Assign tags\n\nSet tags on folders for the selected library."
+        )
         self._btn_assign_tags.clicked.connect(self.assignTagsRequested.emit)
         selector_row.addWidget(self._btn_assign_tags)
 
@@ -161,16 +176,25 @@ class LibraryBrowserPanel(QWidget):
 
         self._btn_open_active = QPushButton("Open in Active Panel")
         self._btn_open_active.setObjectName("libraryToolButton")
+        self._btn_open_active.setToolTip(
+            "Open in active panel\n\nNavigate the focused file panel to the selected folder."
+        )
         self._btn_open_active.clicked.connect(self._onOpenInActivePanel)
         bar.addWidget(self._btn_open_active, 1)
 
         self._btn_open_left = QPushButton("Open in Left")
         self._btn_open_left.setObjectName("libraryToolButton")
+        self._btn_open_left.setToolTip(
+            "Open in left\n\nOpen the selected folder in the left file panel."
+        )
         self._btn_open_left.clicked.connect(lambda: self._onOpenInPanel("left"))
         bar.addWidget(self._btn_open_left)
 
         self._btn_open_right = QPushButton("Open in Right")
         self._btn_open_right.setObjectName("libraryToolButton")
+        self._btn_open_right.setToolTip(
+            "Open in right\n\nOpen the selected folder in the right file panel."
+        )
         self._btn_open_right.clicked.connect(lambda: self._onOpenInPanel("right"))
         bar.addWidget(self._btn_open_right)
 

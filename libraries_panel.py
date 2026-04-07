@@ -47,9 +47,16 @@ class LibrariesPanel(QWidget):
         btn_row.setSpacing(4)
         self._btn_add = QPushButton("Add root")
         self._btn_add.setObjectName("bookmarksToolButton")
+        self._btn_add.setToolTip(
+            "Add library root\n\n"
+            "Register the active panel’s folder as a library root for tagging and search."
+        )
         self._btn_add.clicked.connect(self.addLibraryRequested.emit)
         self._btn_scan = QPushButton("Scan")
         self._btn_scan.setObjectName("bookmarksToolButton")
+        self._btn_scan.setToolTip(
+            "Scan libraries\n\nRescan folders under all library roots."
+        )
         self._btn_scan.clicked.connect(self.scanLibrariesRequested.emit)
         btn_row.addWidget(self._btn_add)
         btn_row.addWidget(self._btn_scan)

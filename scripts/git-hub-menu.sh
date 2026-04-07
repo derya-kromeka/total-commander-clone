@@ -155,7 +155,12 @@ cmd_commit_push() {
     if [[ "${CP_OR,,}" == "y" || "${CP_OR,,}" == "yes" ]]; then
       cmd_set_remote
     fi
-    return
+    if ! git -C "$PROJECT_ROOT" remote get-url origin >/dev/null 2>&1; then
+      echo ">>> No origin — use option (3), then run option (6) again."
+      read -r -p "Press Enter to continue..."
+      return
+    fi
+    echo ">>> Continuing: add, commit, push to origin."
   fi
 
   GIT_UN="$(git -C "$PROJECT_ROOT" config --get user.name 2>/dev/null || true)"

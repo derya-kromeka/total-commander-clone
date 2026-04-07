@@ -466,6 +466,10 @@ def getDarkThemeStylesheet(base_path=None):
         background-color: {c['active_border']};
         border-color: {c['active_border']};
     }}
+    QCheckBox#filterSubfoldersCheck {{
+        font-size: 11px;
+        spacing: 4px;
+    }}
 
     /* ====================================================== */
     /* Tab Widget (for possible future use)                    */
@@ -504,8 +508,31 @@ def getDarkThemeStylesheet(base_path=None):
     }}
     QWidget#filePanelActive {{
         background-color: {c['panel_bg']};
-        border: 1px solid {c['panel_focus_ring']};
+        border: 1px solid {c['overlay0']};
         border-radius: 8px;
+    }}
+
+    /* Active panel: orange ring on address bar + file table (path + panelFileTable) */
+    QWidget#filePanel QLineEdit#panelPathEdit {{
+        border: 1px solid {c['border']};
+    }}
+    QWidget#filePanel QLineEdit#panelPathEdit:focus {{
+        border: 1px solid {c['active_border']};
+    }}
+    QWidget#filePanelActive QLineEdit#panelPathEdit {{
+        border: 1px solid {c['panel_focus_ring']};
+    }}
+    QWidget#filePanelActive QLineEdit#panelPathEdit:focus {{
+        border: 1px solid {c['panel_focus_ring']};
+    }}
+
+    QWidget#filePanel QTableView#panelFileTable {{
+        border: 1px solid {c['border']};
+        border-radius: 6px;
+    }}
+    QWidget#filePanelActive QTableView#panelFileTable {{
+        border: 1px solid {c['panel_focus_ring']};
+        border-radius: 6px;
     }}
 
     /* ====================================================== */
@@ -679,3 +706,35 @@ def getDarkThemeStylesheet(base_path=None):
         color: {c['text']};
     }}
     """
+
+
+def applyTheme(app, theme_mode):
+    """
+    Apply dark (custom QSS), light (Fusion), or system default style + palette.
+    Expects app._system_style_name and app._system_palette set at startup (see main.py).
+    """
+    from PyQt5.QtWidgets import QStyleFactory
+
+    mode = (theme_mode or "dark").lower()
+
+    if mode == "dark":
+        app.setStyleSheet(getDarkThemeStylesheet())
+        return
+
+    app.setStyleSheet("")
+
+    if mode == "light":
+        fusion_style = QStyleFactory.create("Fusion")
+        if fusion_style is not None:
+            app.setStyle(fusion_style)
+            app.setPalette(fusion_style.standardPalette())
+        return
+
+    system_style_name = getattr(app, "_system_style_name", "")
+    if system_style_name:
+        system_style = QStyleFactory.create(system_style_name)
+        if system_style is not None:
+            app.setStyle(system_style)
+    system_palette = getattr(app, "_system_palette", None)
+    if system_palette is not None:
+        app.setPalette(system_palette)

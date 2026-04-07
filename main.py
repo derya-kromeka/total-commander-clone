@@ -9,11 +9,11 @@ import ctypes
 
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtGui import QFont, QIcon, QPalette
 
 from file_manager_app import FileManagerApp
 from settings_manager import SettingsManager
-from theme import getDarkThemeStylesheet
+from theme import applyTheme
 from app_version import APP_VERSION
 
 
@@ -91,6 +91,8 @@ def main():
     app.setApplicationName("Total Commander Clone")
     app.setApplicationVersion(APP_VERSION)
     app.setOrganizationName("TCClone")
+    app._system_style_name = app.style().objectName()
+    app._system_palette = QPalette(app.palette())
 
     base_path = getBasePath()
     config_path = getConfigPath()
@@ -106,7 +108,7 @@ def main():
     font = QFont("Segoe UI", font_size)
     app.setFont(font)
 
-    app.setStyleSheet(getDarkThemeStylesheet())
+    applyTheme(app, settings_manager.getSetting("theme_mode", "dark"))
 
     window = FileManagerApp(settings_manager)
     if icon_path:
