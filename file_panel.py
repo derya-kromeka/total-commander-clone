@@ -792,7 +792,8 @@ class FileTableView(QTableView):
         self.setMouseTracking(True)
 
         header = self.horizontalHeader()
-        header.setStretchLastSection(True)
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(QHeaderView.Interactive)
         header.setSectionsMovable(False)
         header.setHighlightSections(False)
 
@@ -1341,6 +1342,7 @@ class FilePanel(QWidget):
         self._frame = self
         self._updateFrameStyle()
         self._updateFilterPlaceholder()
+        self._updateColumnStretchBehavior()
 
     # --------------------------------------------------------
     # Column width persistence (first three columns; settings.json)
@@ -1348,6 +1350,19 @@ class FilePanel(QWidget):
     # --------------------------------------------------------
     COLUMN_WIDTH_KEYS = ("name", "size", "type")
     COLUMN_VISIBILITY_KEYS = ("name", "size", "type", "date_modified")
+
+    def _updateColumnStretchBehavior(self):
+        """
+        Make the rightmost visible column fill the remaining table width.
+        Other columns stay interactive so user-resized widths still work.
+        """
+        hdr = self._table.horizontalHeader()
+        n = self._source_model.columnCount()
+        visible = [c for c in range(n) if not self._table.isColumnHidden(c)]
+        hdr.setStretchLastSection(False)
+        for col in range(n):
+            mode = QHeaderView.Stretch if visible and col == visible[-1] else QHeaderView.Interactive
+            hdr.setSectionResizeMode(col, mode)
 
     def applyColumnVisibility(self, vis_dict):
         """Show/hide columns from saved state (keys: name, size, type, date_modified)."""
@@ -1359,6 +1374,7 @@ class FilePanel(QWidget):
             v = vis_dict.get(key)
             if v is not None:
                 self._table.setColumnHidden(col, not bool(v))
+        self._updateColumnStretchBehavior()
 
     def getColumnVisibility(self):
         """Return visibility flags for each column."""
@@ -1378,6 +1394,7 @@ class FilePanel(QWidget):
             w = widths_dict.get(key)
             if w is not None and isinstance(w, (int, float)) and w > 0:
                 self._table.setColumnWidth(col, int(w))
+        self._updateColumnStretchBehavior()
 
     def getColumnWidths(self):
         """Return fixed column widths for saving (last column stretches; omitted)."""
@@ -1758,6 +1775,8 @@ class FilePanel(QWidget):
         column_visibility = data.get("column_visibility")
         if column_visibility:
             self.applyColumnVisibility(column_visibility)
+        else:
+            self._updateColumnStretchBehavior()
         fm = data.get("filter_mode")
         if fm in ("contains", "wildcard", "regex"):
             self._proxy_model.setFilterMode(fm)
@@ -1982,6 +2001,7 @@ class FilePanel(QWidget):
                 action.blockSignals(False)
                 return
         self._table.setColumnHidden(col, not visible)
+        self._updateColumnStretchBehavior()
 
     def _distributeColumnsEvenly(self):
         """Give each visible column an equal share of the table viewport width."""
@@ -2000,6 +2020,7 @@ class FilePanel(QWidget):
             wcol = base + (1 if i < rem else 0)
             wcol = max(min_w, wcol)
             self._table.setColumnWidth(col, wcol)
+        self._updateColumnStretchBehavior()
 
     # --------------------------------------------------------
     # Filter options dialog and state

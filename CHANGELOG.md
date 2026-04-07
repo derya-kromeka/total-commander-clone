@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, move items under a dated version section and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.19] - 2026-04-07
+
+### Fixed
+
+- **Panel columns**: the **rightmost visible** file-list column now stretches to the panel edge, instead of relying on Qt's global "last section" behavior. This removes blank space on the right and keeps hidden-column layouts, restored widths, and manual column toggles aligned with the panel width.
+
 ## [0.4.18] - 2026-04-07
 
 ### Fixed
