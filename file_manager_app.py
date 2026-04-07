@@ -27,7 +27,7 @@ from library_browser_panel import LibraryBrowserPanel
 from library_dialogs import LibraryRootDialog, TagAssignmentDialog
 from library_manager import LibraryManager
 from settings_manager import SettingsManager
-from windows_shell_clipboard import setFileClipboard
+from windows_shell_clipboard import setFileClipboard, getClipboardDropEffect
 from app_version import APP_VERSION, APP_NAME, getWindowTitle
 from file_properties_dialog import showFileProperties
 from settings_dialog import SettingsDialog
@@ -62,6 +62,7 @@ class FileManagerApp(QMainWindow):
         self._initBottomBar()
         self._initShortcuts()
         self._restoreState()
+        self._updateMirrorTooltips()
 
     # --------------------------------------------------------
     # Method: _initWindow
@@ -126,7 +127,8 @@ class FileManagerApp(QMainWindow):
         self._action_paste = QAction("Paste\tCtrl+V", self)
         self._action_paste.setToolTip(
             "Paste\n\n"
-            "Paste cut or copied items into the active panel’s folder. Shortcut: Ctrl+V."
+            "Paste into the active panel’s folder: items copied in this app, or files/folders "
+            "copied or cut in the system file manager (Explorer, Finder, …). Shortcut: Ctrl+V."
         )
         self._action_paste.triggered.connect(self._onPaste)
         edit_menu.addAction(self._action_paste)
@@ -223,11 +225,7 @@ class FileManagerApp(QMainWindow):
         view_menu.addAction(self._action_toggle_library_right)
 
         view_menu.addSeparator()
-        self._action_mirror = QAction("Mirror Active Folder to Other Panel\tCtrl+Shift+M", self)
-        self._action_mirror.setToolTip(
-            "Mirror to other panel\n\n"
-            "Open the active panel’s folder in the opposite panel. Shortcut: Ctrl+Shift+M."
-        )
+        self._action_mirror = QAction("Mirror\tCtrl+Shift+M", self)
         self._action_mirror.triggered.connect(self._onMirrorToOther)
         view_menu.addAction(self._action_mirror)
 
@@ -532,10 +530,6 @@ class FileManagerApp(QMainWindow):
         layout.addSpacing(16)
 
         self._btn_mirror = QPushButton("\u229C")
-        self._btn_mirror.setToolTip(
-            "Mirror to other panel\n\n"
-            "Open the active panel’s folder in the opposite panel. Shortcut: Ctrl+Shift+M."
-        )
         self._btn_mirror.setFocusPolicy(Qt.NoFocus)
         self._btn_mirror.clicked.connect(self._onMirrorToOther)
         layout.addWidget(self._btn_mirror)
@@ -925,13 +919,65 @@ class FileManagerApp(QMainWindow):
             self._syncNativeFileClipboard()
             self._showStatus(f"Copied {len(self._clipboard_paths)} item(s) to clipboard")
 
+    def _pathsFromOsClipboard(self):
+        """
+        Return (paths, mode) from the OS file clipboard (local file URLs).
+        mode is 'copy' or 'cut' (Windows Explorer cut sets move → 'cut').
+        Returns ([], None) if the clipboard has no usable file paths.
+        """
+        md = QApplication.clipboard().mimeData()
+        if not md or not md.hasUrls():
+            return [], None
+        paths = []
+        for u in md.urls():
+            if u.isLocalFile():
+                p = os.path.normpath(u.toLocalFile())
+                if p and os.path.exists(p):
+                    paths.append(p)
+        if not paths:
+            return [], None
+        seen = set()
+        uniq = []
+        for p in paths:
+            if p not in seen:
+                seen.add(p)
+                uniq.append(p)
+        paths = uniq
+
+        mode = "copy"
+        eff = getClipboardDropEffect()
+        if eff == "move":
+            mode = "cut"
+        return paths, mode
+
+    def _hasPasteSource(self):
+        if self._clipboard_paths:
+            return True
+        paths, _ = self._pathsFromOsClipboard()
+        return bool(paths)
+
     def _onPaste(self):
-        if not self._active_panel or not self._clipboard_paths:
-            self._showStatus("Nothing to paste.")
+        if not self._active_panel:
             return
 
         dest = self._active_panel.currentPath()
         if not dest:
+            return
+
+        os_paths, os_mode = self._pathsFromOsClipboard()
+        if os_paths:
+            self._clipboard_paths = []
+            self._clipboard_mode = None
+            if os_mode == "cut":
+                success, msg = moveFiles(os_paths, dest, self)
+            else:
+                success, msg = copyFiles(os_paths, dest, self)
+            self._refreshBothPanels()
+            self._showStatus(msg)
+            return
+
+        if not self._clipboard_paths:
+            self._showStatus("Nothing to paste.")
             return
 
         if self._clipboard_mode == "copy":
@@ -995,6 +1041,7 @@ class FileManagerApp(QMainWindow):
         applyTheme(app, values["theme_mode"])
 
         self._settings.saveSettings()
+        self._updateMirrorTooltips()
         self._showStatus("Settings saved.")
 
     # --------------------------------------------------------
@@ -1320,17 +1367,48 @@ class FileManagerApp(QMainWindow):
         browser.setData(libraries, tagged_folders, selected_id)
 
     # --------------------------------------------------------
-    # Mirror: Open active folder in the other panel
+    # Mirror: Sync folder between panels (direction from Settings)
     # --------------------------------------------------------
+    def _updateMirrorTooltips(self):
+        tip = self._mirrorToolTipText()
+        self._action_mirror.setToolTip(tip)
+        if hasattr(self, "_btn_mirror"):
+            self._btn_mirror.setToolTip(tip)
+
+    def _mirrorToolTipText(self):
+        mode = self._settings.getSetting("mirror_mode", "to_other")
+        if mode == "to_active":
+            body = (
+                "Navigate the active panel to the inactive panel’s folder "
+                "(Edit → Settings → Mirror: active follows inactive)."
+            )
+        else:
+            body = (
+                "Navigate the inactive panel to the active panel’s folder "
+                "(Edit → Settings → Mirror: inactive follows active)."
+            )
+        return f"Mirror\n\n{body}\nShortcut: Ctrl+Shift+M."
+
     def _onMirrorToOther(self):
         if not self._active_panel:
             return
-        path = self._active_panel.currentPath()
+        mode = self._settings.getSetting("mirror_mode", "to_other")
+        inactive = self._getInactivePanel()
+        active = self._active_panel
+        if mode == "to_active":
+            source, target = inactive, active
+            err = "Inactive panel has no folder to mirror."
+            ok_msg = "Mirrored to active panel: {path}"
+        else:
+            source, target = active, inactive
+            err = "Active panel has no folder to mirror."
+            ok_msg = "Mirrored to other panel: {path}"
+        path = source.currentPath()
         if not path or not os.path.isdir(path):
-            self._showStatus("No active folder to mirror.")
+            self._showStatus(err)
             return
-        self._getInactivePanel().navigateTo(path)
-        self._showStatus(f"Mirrored folder to other panel: {path}")
+        target.navigateTo(path)
+        self._showStatus(ok_msg.format(path=path))
 
     # --------------------------------------------------------
     # Right-Click Context Menu
@@ -1381,10 +1459,12 @@ class FileManagerApp(QMainWindow):
 
         paste_action = menu.addAction("Paste\tCtrl+V")
         paste_action.setToolTip(
-            "Paste\n\nPaste cut or copied items here. Shortcut: Ctrl+V."
+            "Paste\n\n"
+            "Paste items from this app’s clipboard, or files/folders copied or cut in "
+            "Explorer / Finder. Shortcut: Ctrl+V."
         )
         paste_action.triggered.connect(self._onPaste)
-        paste_action.setEnabled(bool(self._clipboard_paths))
+        paste_action.setEnabled(self._hasPasteSource())
 
         menu.addSeparator()
 

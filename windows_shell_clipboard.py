@@ -41,6 +41,8 @@ if os.name == "nt":
     user32.EmptyClipboard.restype = wintypes.BOOL
     user32.SetClipboardData.argtypes = (wintypes.UINT, wintypes.HANDLE)
     user32.SetClipboardData.restype = wintypes.HANDLE
+    user32.GetClipboardData.argtypes = (wintypes.UINT,)
+    user32.GetClipboardData.restype = wintypes.HANDLE
     user32.RegisterClipboardFormatW.argtypes = (wintypes.LPCWSTR,)
     user32.RegisterClipboardFormatW.restype = wintypes.UINT
 
@@ -159,6 +161,37 @@ if os.name == "nt":
                 user32.CloseClipboard()
 
 
+    # ------------------------------------------------------------
+    # Function: getClipboardDropEffect
+    # Purpose: Read Explorer "Preferred DropEffect" (copy vs cut/move)
+    #          from the clipboard. Returns "copy", "move", or None.
+    # ------------------------------------------------------------
+    def getClipboardDropEffect():
+        effect_format = user32.RegisterClipboardFormatW("Preferred DropEffect")
+        if not effect_format:
+            return None
+        if not _openClipboardWithRetry():
+            return None
+        try:
+            handle = user32.GetClipboardData(effect_format)
+            if not handle:
+                return None
+            ptr = kernel32.GlobalLock(handle)
+            if not ptr:
+                return None
+            try:
+                val = int.from_bytes(ctypes.string_at(ptr, 4), "little")
+            finally:
+                kernel32.GlobalUnlock(handle)
+            if val & DROPEFFECT_MOVE:
+                return "move"
+            if val & DROPEFFECT_COPY:
+                return "copy"
+            return None
+        finally:
+            user32.CloseClipboard()
+
+
 else:
     # ------------------------------------------------------------
     # Non-Windows fallback keeps the rest of the app logic
@@ -166,3 +199,6 @@ else:
     # ------------------------------------------------------------
     def setFileClipboard(paths, mode="copy"):
         return False
+
+    def getClipboardDropEffect():
+        return None

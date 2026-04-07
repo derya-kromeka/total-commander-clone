@@ -11,6 +11,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, move items under a dated version section and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.17] - 2026-04-07
+
+### Added
+
+- **Settings → Mirror (Ctrl+Shift+M)**: choose whether **Mirror** makes the **inactive panel** follow the **active** panel’s folder (default), or the **active panel** follow the **inactive** panel’s folder. View menu and toolbar tooltips update to match.
+
+## [0.4.16] - 2026-04-07
+
+### Added
+
+- **Paste from system file manager**: **Ctrl+V** / **Edit → Paste** pastes files or folders copied or cut in **File Explorer** (and other apps that put local file URLs on the clipboard), into the **active panel’s current folder**. Windows **Cut** in Explorer is honored as a **move** via the shell “Preferred DropEffect” format.
+
+## [0.4.15] - 2026-04-07
+
+### Changed
+
+- **`scripts/git-hub-menu.sh`** aligned with **`scripts/git-hub-menu.bat`**: asterisk-framed **GIT** / **THIS REPO** context (origin, identity, HTTPS token file), **MENU** block and option wording, **SUCCESS** / **FAILED** banners on pull / commit+push / force-push / first-time wizard, option **6** continues after setting **origin** via **3** (`GIT_MENU_FROM_COMMIT`), first-time flow matches the Windows script (`.gitkeep`, `commit --allow-empty`, fetch + push hints), and clearer messages (e.g. “nothing to commit” + no commits yet).
+
+## [0.4.14] - 2026-04-07
+
+### Added
+
+- **Developer scripts**: `scripts/install.bat` creates `.venv` and installs `requirements.txt` on Windows (Command Prompt). `scripts/run.bat` runs `main.py` with `.venv\Scripts\python.exe` after install.
+- **macOS**: `scripts/RUN.command` in the repo (re-written by `bash scripts/install.sh` on Apple systems) — double-click in Finder to launch via `run.sh` after a successful install. If Terminal says permission denied, run `chmod +x scripts/RUN.command`.
+
+### Changed
+
+- **`scripts/run.sh`**: Invokes `.venv/bin/python` or `.venv/Scripts/python.exe` directly so macOS/Linux never pick a wrong `python` on PATH; error text points to `install.sh` / `install.bat`.
+
 ## [0.4.13] - 2026-04-07
 
 ### Changed

@@ -21,7 +21,7 @@ class SettingsDialog(QDialog):
         self._settings = settings_manager
         self.setWindowTitle("Settings")
         self.setModal(True)
-        self.resize(480, 280)
+        self.resize(520, 340)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -58,6 +58,21 @@ class SettingsDialog(QDialog):
         )
         form.addRow("Default right path", self._default_right_path)
 
+        self._mirror_mode = QComboBox(self)
+        self._mirror_mode.addItem(
+            "Inactive panel follows active (open active’s folder in the other pane)",
+            "to_other",
+        )
+        self._mirror_mode.addItem(
+            "Active panel follows inactive (open inactive’s folder in the active pane)",
+            "to_active",
+        )
+        cur_mirror = self._settings.getSetting("mirror_mode", "to_other")
+        self._mirror_mode.setCurrentIndex(
+            max(0, self._mirror_mode.findData(cur_mirror))
+        )
+        form.addRow("Mirror (Ctrl+Shift+M)", self._mirror_mode)
+
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(
@@ -75,4 +90,5 @@ class SettingsDialog(QDialog):
             "confirm_delete": self._confirm_delete.isChecked(),
             "default_left_path": self._default_left_path.text().strip(),
             "default_right_path": self._default_right_path.text().strip(),
+            "mirror_mode": self._mirror_mode.currentData(),
         }
