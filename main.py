@@ -9,7 +9,7 @@ import ctypes
 
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QIcon, QPalette
+from PyQt5.QtGui import QIcon, QPalette
 
 from file_manager_app import FileManagerApp
 from settings_manager import SettingsManager
@@ -104,11 +104,8 @@ def main():
 
     settings_manager = SettingsManager(config_path)
 
-    font_size = settings_manager.getSetting("font_size", 10)
-    font = QFont("Segoe UI", font_size)
-    app.setFont(font)
-
-    applyTheme(app, settings_manager.getSetting("theme_mode", "dark"))
+    font_size = int(settings_manager.getSetting("font_size", 10))
+    applyTheme(app, settings_manager.getSetting("theme_mode", "dark"), font_size)
 
     window = FileManagerApp(settings_manager)
     if icon_path:

@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
     QStyle, QTabWidget, QStackedWidget,
 )
 from PyQt5.QtCore import Qt, QUrl, QTimer
-from PyQt5.QtGui import QKeySequence, QDesktopServices, QIcon, QFont
+from PyQt5.QtGui import QKeySequence, QDesktopServices, QIcon
 
 from file_panel import FilePanel
 from file_operations import copyFiles, moveFiles, deleteFiles, renameFile
@@ -1037,8 +1037,7 @@ class FileManagerApp(QMainWindow):
         self._right_panel.setShowHidden(values["show_hidden_files"])
 
         app = QApplication.instance()
-        app.setFont(QFont("Segoe UI", values["font_size"]))
-        applyTheme(app, values["theme_mode"])
+        applyTheme(app, values["theme_mode"], int(values["font_size"]))
 
         self._settings.saveSettings()
         self._updateMirrorTooltips()

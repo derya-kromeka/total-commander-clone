@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, move items under a dated version section and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.18] - 2026-04-07
+
+### Fixed
+
+- **Font size (and theme) on startup**: Saved **Font size** from Settings now applies as soon as the app opens. The dark theme stylesheet used fixed pixel sizes that overrode `QApplication`’s font until Settings was opened; theme text sizes are now derived from the same base size, and `applyTheme()` sets the application font for all theme modes.
+
 ## [0.4.17] - 2026-04-07
 
 ### Added

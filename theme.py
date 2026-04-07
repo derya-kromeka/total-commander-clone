@@ -4,6 +4,26 @@ Provides a modern, flat dark theme using Qt Style Sheets (QSS).
 Color palette inspired by Catppuccin Mocha.
 """
 
+from PyQt5.QtGui import QFont
+
+
+# ------------------------------------------------------------
+# Font sizes for QSS (must track Settings "Font size" so the
+# app does not ignore QApplication font until Settings is opened).
+# ------------------------------------------------------------
+def _fontSizesPt(base_pt):
+    """Scale theme text sizes from the user’s base font size (pt)."""
+    b = max(8, min(24, int(base_pt)))
+    return {
+        "base": b,
+        "toolbar": b + 3,
+        "small": max(8, b + 1),
+        "tiny": max(7, b - 1),
+        "micro": max(6, b - 2),
+        "center_glyph": b + 8,
+    }
+
+
 # ------------------------------------------------------------
 # Color Constants
 # ------------------------------------------------------------
@@ -49,8 +69,9 @@ COLORS = {
 # Purpose: Returns the complete QSS stylesheet string for the
 #          dark theme applied to the entire application.
 # ------------------------------------------------------------
-def getDarkThemeStylesheet(base_path=None):
+def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
     c = COLORS
+    fs = _fontSizesPt(font_size_pt)
     return f"""
 
     /* ====================================================== */
@@ -60,6 +81,7 @@ def getDarkThemeStylesheet(base_path=None):
         background-color: {c['base']};
         color: {c['text']};
         font-family: "Segoe UI", "Roboto", sans-serif;
+        font-size: {fs['base']}pt;
         border: none;
     }}
 
@@ -134,7 +156,7 @@ def getDarkThemeStylesheet(base_path=None):
         border: 1px solid transparent;
         border-radius: 5px;
         padding: 5px 10px;
-        font-size: 13px;
+        font-size: {fs['toolbar']}pt;
     }}
     QToolButton:hover {{
         background-color: {c['hover']};
@@ -396,7 +418,7 @@ def getDarkThemeStylesheet(base_path=None):
     }}
     QLabel#panelLabel {{
         color: {c['subtext0']};
-        font-size: 11px;
+        font-size: {fs['small']}pt;
     }}
     QLabel#statusLabel {{
         color: {c['subtext0']};
@@ -467,7 +489,7 @@ def getDarkThemeStylesheet(base_path=None):
         border-color: {c['active_border']};
     }}
     QCheckBox#filterSubfoldersCheck {{
-        font-size: 11px;
+        font-size: {fs['small']}pt;
         spacing: 4px;
     }}
     QCheckBox#filterSubfoldersCheck:checked {{
@@ -575,7 +597,7 @@ def getDarkThemeStylesheet(base_path=None):
         border: 1px solid {c['border']};
         border-radius: 5px;
         padding: 4px 2px;
-        font-size: 18px;
+        font-size: {fs['center_glyph']}pt;
         font-weight: bold;
         min-height: 36px;
     }}
@@ -589,7 +611,7 @@ def getDarkThemeStylesheet(base_path=None):
     }}
     QFrame#centerPanel QLabel {{
         color: {c['overlay0']};
-        font-size: 9px;
+        font-size: {fs['tiny']}pt;
     }}
 
     /* ====================================================== */
@@ -616,7 +638,7 @@ def getDarkThemeStylesheet(base_path=None):
 
     QPushButton#bookmarksToolButton {{
         padding: 2px 8px;
-        font-size: 11px;
+        font-size: {fs['small']}pt;
         min-height: 22px;
     }}
 
@@ -630,7 +652,7 @@ def getDarkThemeStylesheet(base_path=None):
         max-height: 28px;
         padding: 0;
         font-weight: bold;
-        font-size: 13px;
+        font-size: {fs['toolbar']}pt;
         border-top-right-radius: 0;
         border-bottom-right-radius: 0;
     }}
@@ -648,7 +670,7 @@ def getDarkThemeStylesheet(base_path=None):
     }}
     QLabel#driveArrow {{
         color: {c['text']};
-        font-size: 8px;
+        font-size: {fs['micro']}pt;
         padding: 0;
         margin: 0;
         background-color: {c['surface0']};
@@ -688,7 +710,7 @@ def getDarkThemeStylesheet(base_path=None):
     /* ====================================================== */
     QPushButton#libraryToolButton {{
         padding: 2px 8px;
-        font-size: 11px;
+        font-size: {fs['small']}pt;
         min-height: 22px;
     }}
 
@@ -712,17 +734,29 @@ def getDarkThemeStylesheet(base_path=None):
     """
 
 
-def applyTheme(app, theme_mode):
+def applyTheme(app, theme_mode, font_size_pt=None):
     """
     Apply dark (custom QSS), light (Fusion), or system default style + palette.
     Expects app._system_style_name and app._system_palette set at startup (see main.py).
+
+    font_size_pt: optional base font size from Settings. When None, uses app.font()
+    point size (falls back to 10). Always updates QApplication font so light/system
+    themes match Settings on startup.
     """
     from PyQt5.QtWidgets import QStyleFactory
+
+    if font_size_pt is None:
+        sz = app.font().pointSize()
+        font_size_pt = sz if sz > 0 else 10
+    else:
+        font_size_pt = int(font_size_pt)
+
+    app.setFont(QFont("Segoe UI", font_size_pt))
 
     mode = (theme_mode or "dark").lower()
 
     if mode == "dark":
-        app.setStyleSheet(getDarkThemeStylesheet())
+        app.setStyleSheet(getDarkThemeStylesheet(font_size_pt=font_size_pt))
         return
 
     app.setStyleSheet("")
