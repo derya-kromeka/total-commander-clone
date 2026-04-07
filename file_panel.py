@@ -16,6 +16,7 @@ import time
 from datetime import datetime
 
 from filter_spec import FilterSpec
+from recursive_scan_worker import RecursiveScanThread
 
 
 # Pattern for splitting names into text vs digit runs (natural sort).
@@ -63,7 +64,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableView, QLineEdit,
     QPushButton, QAbstractItemView, QHeaderView, QFrame, QLabel,
     QStyledItemDelegate, QStyle, QApplication, QComboBox,
-    QFileIconProvider, QInputDialog, QMessageBox,
+    QFileIconProvider, QInputDialog, QMessageBox, QProgressDialog,
     QMenu, QAction, QActionGroup, QToolButton, QCheckBox,
 )
 from PyQt5.QtCore import (
@@ -328,6 +329,9 @@ class DrivePickerCombo(QComboBox):
 # ============================================================
 class FileSystemModel(QAbstractTableModel):
 
+    recursiveScanRequested = pyqtSignal(str, int)
+    recursiveScanAbortRequested = pyqtSignal()
+
     COLUMNS = ["Name", "Size", "Type", "Date Modified"]
     COLUMN_TOOLTIPS = [
         "Name — File or folder as listed (includes subpaths when Subfolders search is on).",
@@ -346,6 +350,27 @@ class FileSystemModel(QAbstractTableModel):
         self._show_hidden = False
         self._recursive = False
         self._icon_provider = QFileIconProvider()
+        self._scan_generation = 0
+
+    # --------------------------------------------------------
+    # Method: showHiddenFiles
+    # --------------------------------------------------------
+    def showHiddenFiles(self):
+        return self._show_hidden
+
+    # --------------------------------------------------------
+    # Method: applyRecursiveScanResult
+    # Purpose: Apply worker result on the GUI thread if generation matches.
+    # --------------------------------------------------------
+    def applyRecursiveScanResult(self, gen, entries):
+        if gen != self._scan_generation:
+            return
+        self.beginResetModel()
+        self._entries = list(entries)
+        self._entries.sort(
+            key=lambda e: (not e["is_dir"], natural_sort_key(e["name"]))
+        )
+        self.endResetModel()
 
     # --------------------------------------------------------
     # Method: setRecursive
@@ -400,19 +425,33 @@ class FileSystemModel(QAbstractTableModel):
     # --------------------------------------------------------
     # Method: loadDirectory
     # Purpose: Scans the given directory and populates the model.
+    # Recursive mode runs the walk on a worker thread (see FilePanel).
     # Input: path (str) - The directory to load.
     # --------------------------------------------------------
     def loadDirectory(self, path):
+        path = os.path.normpath(path)
+        self.recursiveScanAbortRequested.emit()
+
+        if not self._recursive:
+            self._loadDirectoryFlatSync(path)
+            return
+
+        self._scan_generation += 1
+        gen = self._scan_generation
         self.beginResetModel()
         self._current_path = path
         self._entries = []
+        self.endResetModel()
+        self.recursiveScanRequested.emit(path, gen)
 
-        if self._recursive:
-            self._loadDirectoryRecursive(path)
-        else:
-            self._loadDirectoryFlat(path)
-
-        self._entries.sort(key=lambda e: (not e["is_dir"], natural_sort_key(e["name"])))
+    def _loadDirectoryFlatSync(self, path):
+        self.beginResetModel()
+        self._current_path = path
+        self._entries = []
+        self._loadDirectoryFlat(path)
+        self._entries.sort(
+            key=lambda e: (not e["is_dir"], natural_sort_key(e["name"]))
+        )
         self.endResetModel()
 
     def _loadDirectoryFlat(self, path):
@@ -434,50 +473,6 @@ class FileSystemModel(QAbstractTableModel):
                 self._append_entry(full_path, name, is_dir, size, mod_time)
             except (PermissionError, OSError):
                 continue
-
-    def _loadDirectoryRecursive(self, root):
-        root = os.path.normpath(root)
-        try:
-            for dirpath, dirnames, filenames in os.walk(root):
-                if not self._show_hidden:
-                    dirnames[:] = [
-                        d for d in dirnames
-                        if not self._skip_hidden_stat(os.path.join(dirpath, d), d)
-                    ]
-
-                rel_dir = os.path.relpath(dirpath, root)
-                if rel_dir == os.curdir:
-                    rel_dir = ""
-
-                for d in dirnames:
-                    full_path = os.path.join(dirpath, d)
-                    if self._skip_hidden_stat(full_path, d):
-                        continue
-                    try:
-                        st = os.stat(full_path)
-                        if not stat.S_ISDIR(st.st_mode):
-                            continue
-                        display = os.path.join(rel_dir, d) if rel_dir else d
-                        self._append_entry(full_path, display, True, -1, st.st_mtime)
-                    except (PermissionError, OSError):
-                        continue
-
-                for f in filenames:
-                    if self._skip_hidden_stat(os.path.join(dirpath, f), f):
-                        continue
-                    full_path = os.path.join(dirpath, f)
-                    try:
-                        st = os.stat(full_path)
-                        if stat.S_ISDIR(st.st_mode):
-                            continue
-                        display = os.path.join(rel_dir, f) if rel_dir else f
-                        self._append_entry(
-                            full_path, display, False, st.st_size, st.st_mtime
-                        )
-                    except (PermissionError, OSError):
-                        continue
-        except (PermissionError, OSError):
-            return
 
     # --------------------------------------------------------
     # Method: currentPath
@@ -1074,6 +1069,8 @@ class FilePanel(QWidget):
         self._history_index = -1
         self._is_active = False
         self._rename_edit = None
+        self._scan_thread = None
+        self._scan_progress = None
 
         self._initUI()
         self._connectSignals()
@@ -1411,6 +1408,10 @@ class FilePanel(QWidget):
             selection_model.selectionChanged.connect(self._onSelectionChanged)
 
         self._source_model.modelReset.connect(self._updateStatusLabel)
+        self._source_model.recursiveScanAbortRequested.connect(
+            self._cancelRecursiveScanThread
+        )
+        self._source_model.recursiveScanRequested.connect(self._onRecursiveScanRequested)
 
     # --------------------------------------------------------
     # Method: _installActivationEventFilters
@@ -2051,7 +2052,34 @@ class FilePanel(QWidget):
         dlg = FilterOptionsDialog(self, self._settings_manager, self)
         dlg.exec_()
 
-    def _onSubfoldersFilterToggled(self, *_args):
+    def _onSubfoldersFilterToggled(self, state):
+        if state == Qt.Checked and self._settings_manager:
+            if not self._settings_manager.getSetting(
+                "subfolders_warning_dismissed", False
+            ):
+                msg = QMessageBox(self)
+                msg.setIcon(QMessageBox.Information)
+                msg.setWindowTitle("Subfolders search")
+                msg.setText(
+                    "When enabled, this panel lists every file and folder under the "
+                    "current path. Large locations (for example drive roots) can take a "
+                    "long time. A progress window with Cancel appears while scanning."
+                )
+                cb = QCheckBox("Don't show this again")
+                msg.setCheckBox(cb)
+                msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+                msg.setDefaultButton(QMessageBox.Ok)
+                r = msg.exec_()
+                if cb.isChecked():
+                    self._settings_manager.setSetting(
+                        "subfolders_warning_dismissed", True
+                    )
+                    self._settings_manager.saveSettings()
+                if r != QMessageBox.Ok:
+                    self._chk_filter_subfolders.blockSignals(True)
+                    self._chk_filter_subfolders.setChecked(False)
+                    self._chk_filter_subfolders.blockSignals(False)
+                    return
         self._source_model.setRecursive(self._chk_filter_subfolders.isChecked())
         self._updateFilterPlaceholder()
 
@@ -2111,7 +2139,85 @@ class FilePanel(QWidget):
             if self._source_model.entryAt(i) and self._source_model.entryAt(i)["is_dir"]
         )
         files = total - dirs
-        self._status_label.setText(f"{files} file(s), {dirs} folder(s)")
+        text = f"{files} file(s), {dirs} folder(s)"
+        if self._source_model.isRecursive():
+            text += "  ·  Subfolders scan"
+        self._status_label.setText(text)
+
+    # --------------------------------------------------------
+    # Recursive subfolder scan (background thread + progress)
+    # --------------------------------------------------------
+    def _closeScanProgress(self):
+        if self._scan_progress is not None:
+            self._scan_progress.close()
+            self._scan_progress.deleteLater()
+            self._scan_progress = None
+
+    def _cancelRecursiveScanThread(self):
+        self._closeScanProgress()
+        if self._scan_thread is None:
+            return
+        thr = self._scan_thread
+        if thr.isRunning():
+            thr.cancel()
+            thr.wait(120000)
+        QApplication.processEvents()
+        thr.deleteLater()
+        self._scan_thread = None
+
+    def _onRecursiveScanRequested(self, path, gen):
+        self._cancelRecursiveScanThread()
+        self._scan_progress = QProgressDialog(self)
+        self._scan_progress.setWindowTitle("Scanning subfolders")
+        self._scan_progress.setLabelText("Starting…")
+        self._scan_progress.setCancelButtonText("Cancel")
+        self._scan_progress.setRange(0, 0)
+        self._scan_progress.setMinimumDuration(0)
+        self._scan_progress.setWindowModality(Qt.WindowModal)
+        self._scan_progress.canceled.connect(self._onScanProgressCanceled)
+
+        self._scan_thread = RecursiveScanThread(
+            gen,
+            path,
+            self._source_model.showHiddenFiles(),
+            self,
+        )
+        self._scan_thread.progress.connect(self._onRecursiveScanProgress)
+        self._scan_thread.finishedScan.connect(self._onRecursiveScanFinished)
+        self._scan_thread.scanCancelled.connect(self._onRecursiveScanCancelled)
+        self._scan_thread.start()
+
+    def _onScanProgressCanceled(self):
+        if self._scan_thread is not None and self._scan_thread.isRunning():
+            self._scan_thread.cancel()
+
+    def _onRecursiveScanProgress(self, count, current_dir):
+        if self._scan_progress is None:
+            return
+        short = current_dir
+        if len(short) > 70:
+            short = "…" + short[-67:]
+        self._scan_progress.setLabelText(
+            f"{count} items scanned\n{short}"
+        )
+
+    def _onRecursiveScanFinished(self, gen, entries):
+        self._closeScanProgress()
+        self._source_model.applyRecursiveScanResult(gen, entries)
+        self._updateStatusLabel()
+        thr = self._scan_thread
+        self._scan_thread = None
+        if thr is not None:
+            thr.deleteLater()
+
+    def _onRecursiveScanCancelled(self, gen):
+        self._closeScanProgress()
+        self._updateStatusLabel()
+        if self._scan_thread is None:
+            return
+        thr = self._scan_thread
+        self._scan_thread = None
+        thr.deleteLater()
 
     def _updateFrameStyle(self):
         if self._is_active:

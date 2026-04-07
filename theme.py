@@ -470,6 +470,10 @@ def getDarkThemeStylesheet(base_path=None):
         font-size: 11px;
         spacing: 4px;
     }}
+    QCheckBox#filterSubfoldersCheck:checked {{
+        font-weight: bold;
+        color: {c['peach']};
+    }}
 
     /* ====================================================== */
     /* Tab Widget (for possible future use)                    */

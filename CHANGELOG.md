@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, move items under a dated version section and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.13] - 2026-04-07
+
+### Changed
+
+- **Subfolders** search no longer blocks the UI: recursive listing runs on a **background thread** with a **progress dialog** (item count + current path) and **Cancel**. First-time enable shows an explanation with optional “Don’t show again” (stored in settings). Status line shows **Subfolders scan** when active; the Subfolders checkbox uses a stronger style when checked (dark theme).
+
 ## [0.4.12] - 2026-04-07
 
 ### Added

@@ -32,6 +32,7 @@ DEFAULT_SETTINGS = {
     "sort_column": 0,
     "sort_order": "ascending",
     "font_size": 10,
+    "subfolders_warning_dismissed": False,
 }
 
 
