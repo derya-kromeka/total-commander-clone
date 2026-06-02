@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.37] - 2026-06-02
+
+### Fixed
+
+- **Copy/move progress**: Progress dialog now updates during large file transfers using byte-level chunked copy (1 MiB chunks) instead of staying at 0% until each top-level item finishes. Shows combined item count and transferred/total size; folder trees report per-file progress within the overall byte total. Cross-volume moves use the same byte progress; same-volume renames stay instant.
+
 ## [0.4.36] - 2026-06-02
 
 ### Fixed

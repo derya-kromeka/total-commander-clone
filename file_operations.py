@@ -37,6 +37,47 @@ def _resolveConflictPath(dest_path):
     return dest_path
 
 
+# Chunk size for byte-level copy progress (1 MiB)
+_COPY_CHUNK_SIZE = 1024 * 1024
+
+
+def _formatByteSize(num_bytes):
+    """Human-readable size for progress labels."""
+    if num_bytes < 1024:
+        return f"{num_bytes} B"
+    size = float(num_bytes)
+    for unit in ("KB", "MB", "GB", "TB"):
+        size /= 1024.0
+        if size < 1024.0:
+            return f"{size:.1f} {unit}"
+    return f"{size / 1024.0:.1f} PB"
+
+
+def _pathByteSize(path):
+    """Total bytes for a file or directory tree."""
+    if os.path.isfile(path):
+        try:
+            return os.path.getsize(path)
+        except OSError:
+            return 0
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(root, name))
+            except OSError:
+                pass
+    return total
+
+
+def _sameVolume(path_a, path_b):
+    """True when paths are on the same drive/volume (fast rename move)."""
+    return (
+        os.path.splitdrive(os.path.abspath(path_a))[0].lower()
+        == os.path.splitdrive(os.path.abspath(path_b))[0].lower()
+    )
+
+
 # ============================================================
 # Class: ConflictDialog
 # Purpose: Modal dialog when a file already exists at destination.
@@ -113,7 +154,7 @@ class ConflictDialog(QDialog):
 # ============================================================
 class FileOperationWorker(QThread):
 
-    progressChanged = pyqtSignal(int, str)
+    progressChanged = pyqtSignal(int, str, str)
     operationFinished = pyqtSignal(bool, str)
     errorOccurred = pyqtSignal(str, str)
     conflictDetected = pyqtSignal(str, str, str)
@@ -137,6 +178,8 @@ class FileOperationWorker(QThread):
         self._conflict_choice = None
         self._conflict_new_dest = None
         self._apply_to_all_choice = None
+        self._total_bytes = 0
+        self._bytes_completed = 0
 
     # --------------------------------------------------------
     # Method: cancel
@@ -168,22 +211,35 @@ class FileOperationWorker(QThread):
             self.operationFinished.emit(True, "No files to process.")
             return
 
+        use_byte_progress = self._operation in (
+            self.OPERATION_COPY,
+            self.OPERATION_MOVE,
+        )
+        if use_byte_progress:
+            self.progressChanged.emit(0, "", "Calculating size...")
+            self._total_bytes = sum(_pathByteSize(p) for p in self._file_paths)
+            self._bytes_completed = 0
+
         for i, source_path in enumerate(self._file_paths):
             if self._cancelled:
                 self.operationFinished.emit(False, "Operation cancelled.")
                 return
 
             file_name = os.path.basename(source_path)
-            progress_pct = int((i / total) * 100)
-            self.progressChanged.emit(progress_pct, file_name)
+            if use_byte_progress:
+                self._emitProgress(file_name, i, total, bytes_in_item=0)
+            else:
+                progress_pct = int((i / total) * 100)
+                self._emitProgress(file_name, i, total, percent_override=progress_pct)
 
             try:
                 if self._operation == self.OPERATION_COPY:
-                    self._copyItem(source_path, self._destination)
+                    self._copyItem(source_path, self._destination, i, total)
                 elif self._operation == self.OPERATION_MOVE:
-                    self._moveItem(source_path, self._destination)
+                    self._moveItem(source_path, self._destination, i, total)
                 elif self._operation == self.OPERATION_DELETE:
                     self._deleteItem(source_path)
+                    self._emitProgress(file_name, i + 1, total, percent_override=int(((i + 1) / total) * 100))
             except UserAbortError:
                 self.operationFinished.emit(False, "Operation cancelled.")
                 return
@@ -196,7 +252,7 @@ class FileOperationWorker(QThread):
             error_summary = "\n".join(self._errors)
             self.operationFinished.emit(False, f"Completed with errors:\n{error_summary}")
         else:
-            self.progressChanged.emit(100, "Done")
+            self._emitProgress("Done", total, total, percent_override=100)
             self.operationFinished.emit(True, f"Successfully processed {total} item(s).")
 
     # --------------------------------------------------------
@@ -233,9 +289,128 @@ class FileOperationWorker(QThread):
         return dest_path
 
     # --------------------------------------------------------
+    # Method: _emitProgress
+    # Purpose: Emit percent, current name, and detail (items + bytes).
+    # --------------------------------------------------------
+    def _emitProgress(
+        self,
+        file_name,
+        items_done,
+        total_items,
+        bytes_in_item=0,
+        percent_override=None,
+    ):
+        if percent_override is not None:
+            percent = percent_override
+        elif self._total_bytes > 0:
+            overall_bytes = min(
+                self._bytes_completed + bytes_in_item,
+                self._total_bytes,
+            )
+            percent = int(overall_bytes * 100 / self._total_bytes)
+        elif total_items > 0:
+            percent = int(items_done * 100 / total_items)
+        else:
+            percent = 0
+
+        percent = max(0, min(100, percent))
+        detail = f"{items_done} / {total_items} items"
+        if self._total_bytes > 0:
+            done_bytes = min(self._bytes_completed + bytes_in_item, self._total_bytes)
+            detail += (
+                f"  •  {_formatByteSize(done_bytes)} / {_formatByteSize(self._total_bytes)}"
+            )
+        self.progressChanged.emit(percent, file_name, detail)
+
+    # --------------------------------------------------------
+    # Method: _copyFileWithProgress
+    # Purpose: Copy a single file in chunks with byte progress.
+    # --------------------------------------------------------
+    def _copyFileWithProgress(self, source, dest_path, display_name, item_index, total_items):
+        item_size = 0
+        try:
+            item_size = os.path.getsize(source)
+        except OSError:
+            pass
+
+        bytes_in_item = 0
+        try:
+            with open(source, "rb") as src_f, open(dest_path, "wb") as dst_f:
+                while True:
+                    if self._cancelled:
+                        raise UserAbortError()
+                    chunk = src_f.read(_COPY_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    dst_f.write(chunk)
+                    bytes_in_item += len(chunk)
+                    self._emitProgress(display_name, item_index, total_items, bytes_in_item)
+            shutil.copystat(source, dest_path)
+        except Exception:
+            self._removePartial(dest_path)
+            raise
+
+        self._bytes_completed += item_size
+
+    # --------------------------------------------------------
+    # Method: _copyDirectoryWithProgress
+    # Purpose: Copy a directory tree file-by-file with byte progress.
+    # --------------------------------------------------------
+    def _copyDirectoryWithProgress(self, source, dest_path, item_index, total_items):
+        root_name = os.path.basename(source.rstrip(os.sep)) or source
+        for dir_root, dir_names, file_names in os.walk(source):
+            if self._cancelled:
+                raise UserAbortError()
+            rel = os.path.relpath(dir_root, source)
+            dest_dir = dest_path if rel == "." else os.path.join(dest_path, rel)
+            os.makedirs(dest_dir, exist_ok=True)
+            for dir_name in dir_names:
+                os.makedirs(os.path.join(dest_dir, dir_name), exist_ok=True)
+            for file_name in file_names:
+                if self._cancelled:
+                    raise UserAbortError()
+                src_file = os.path.join(dir_root, file_name)
+                dst_file = os.path.join(dest_dir, file_name)
+                if rel == ".":
+                    display = os.path.join(root_name, file_name) if file_name else root_name
+                else:
+                    display = os.path.join(root_name, rel, file_name)
+                self._copyFileWithProgress(
+                    src_file, dst_file, display, item_index, total_items
+                )
+        try:
+            shutil.copystat(source, dest_path)
+        except OSError:
+            pass
+
+    # --------------------------------------------------------
+    # Method: _removePartial
+    # Purpose: Remove incomplete destination on cancel/error.
+    # --------------------------------------------------------
+    def _removePartial(self, path):
+        if not path or not os.path.exists(path):
+            return
+        try:
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+        except OSError:
+            pass
+
+    # --------------------------------------------------------
+    # Method: _finishItemProgress
+    # Purpose: Mark top-level item bytes done after copy/move.
+    # --------------------------------------------------------
+    def _finishItemProgress(self, source, file_name, item_index, total_items):
+        expected = sum(_pathByteSize(p) for p in self._file_paths[: item_index + 1])
+        self._bytes_completed = min(expected, self._total_bytes)
+        self._emitProgress(file_name, item_index + 1, total_items)
+
+    # --------------------------------------------------------
     # Method: _copyItem
     # --------------------------------------------------------
-    def _copyItem(self, source, dest_dir):
+    def _copyItem(self, source, dest_dir, item_index, total_items):
         name = os.path.basename(source)
         dest_path = os.path.join(dest_dir, name)
 
@@ -247,14 +422,17 @@ class FileOperationWorker(QThread):
         if os.path.isdir(source):
             if os.path.exists(dest_path):
                 shutil.rmtree(dest_path)
-            shutil.copytree(source, dest_path)
+            os.makedirs(dest_path, exist_ok=True)
+            self._copyDirectoryWithProgress(source, dest_path, item_index, total_items)
         else:
-            shutil.copy2(source, dest_path)
+            self._copyFileWithProgress(source, dest_path, name, item_index, total_items)
+
+        self._finishItemProgress(source, name, item_index, total_items)
 
     # --------------------------------------------------------
     # Method: _moveItem
     # --------------------------------------------------------
-    def _moveItem(self, source, dest_dir):
+    def _moveItem(self, source, dest_dir, item_index, total_items):
         name = os.path.basename(source)
         dest_path = os.path.join(dest_dir, name)
 
@@ -263,12 +441,30 @@ class FileOperationWorker(QThread):
             if dest_path is None:
                 raise UserAbortError()
 
+        if _sameVolume(source, dest_path):
+            if os.path.exists(dest_path):
+                if os.path.isdir(dest_path):
+                    shutil.rmtree(dest_path)
+                else:
+                    os.remove(dest_path)
+            shutil.move(source, dest_path)
+            self._finishItemProgress(source, name, item_index, total_items)
+            return
+
         if os.path.exists(dest_path):
             if os.path.isdir(dest_path):
                 shutil.rmtree(dest_path)
             else:
                 os.remove(dest_path)
-        shutil.move(source, dest_path)
+
+        if os.path.isdir(source):
+            self._copyDirectoryWithProgress(source, dest_path, item_index, total_items)
+            shutil.rmtree(source)
+        else:
+            self._copyFileWithProgress(source, dest_path, name, item_index, total_items)
+            os.remove(source)
+
+        self._finishItemProgress(source, name, item_index, total_items)
 
     # --------------------------------------------------------
     # Method: _deleteItem
@@ -386,12 +582,19 @@ class FileOperationDialog(QDialog):
     # --------------------------------------------------------
     # Slots
     # --------------------------------------------------------
-    def _onProgress(self, percent, file_name):
+    def _onProgress(self, percent, file_name, detail):
+        self._progress_bar.setRange(0, 100)
         self._progress_bar.setValue(percent)
-        self._file_label.setText(f"Processing: {file_name}")
-        total = len(self._file_paths)
-        done = int(percent * total / 100) if total else 0
-        self._count_label.setText(f"{done} / {total} items")
+        if file_name:
+            self._file_label.setText(f"Processing: {file_name}")
+        elif percent == 0 and detail:
+            self._file_label.setText(detail)
+        if detail:
+            self._count_label.setText(detail)
+        else:
+            total = len(self._file_paths)
+            done = int(percent * total / 100) if total else 0
+            self._count_label.setText(f"{done} / {total} items")
 
     def _onFinished(self, success, message):
         self._result_success = success
