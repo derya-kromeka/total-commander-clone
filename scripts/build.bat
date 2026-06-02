@@ -6,12 +6,20 @@ REM Script: scripts/build.bat
 REM Purpose: Build standalone .exe with PyInstaller for correct
 REM          taskbar icon and launch behavior.
 REM Project root: parent of this scripts\ folder (portable; no absolute paths).
+REM
+REM Builds to dist_build\ first so a locked dist\TotalCommanderClone does not
+REM block rebuilds. On success, promotes to dist\ when the old folder is removable.
+REM If dist\ is locked after build, prompts to delete and complete the swap.
 REM ------------------------------------------------------------
 
 cd /d "%~dp0.."
 
 set "ICON=file-explorer.ico"
 set "SCRIPT=main.py"
+set "APP_EXE=TotalCommanderClone.exe"
+set "DIST_FINAL=dist\TotalCommanderClone"
+set "DIST_BUILD_ROOT=dist_build"
+set "DIST_STAGING=%DIST_BUILD_ROOT%\TotalCommanderClone"
 set "PYTHON_EXE="
 set "PYTHON_ARGS="
 
@@ -54,22 +62,194 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-REM Kill any running TotalCommanderClone.exe so dist folder can be cleaned
-taskkill /IM TotalCommanderClone.exe /F >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    echo [INFO] Stopped running TotalCommanderClone.exe
-    timeout /t 2 /nobreak >nul
-)
+call :stop_running_app
+
+call :try_clear_staging
 
 echo [INFO] Building standalone .exe (TotalCommanderClone.spec)...
-%PYTHON_EXE% %PYTHON_ARGS% -m PyInstaller --noconfirm --clean TotalCommanderClone.spec
+echo [INFO] Staging output: %DIST_STAGING%\
+%PYTHON_EXE% %PYTHON_ARGS% -m PyInstaller --noconfirm --clean --distpath "%DIST_BUILD_ROOT%" TotalCommanderClone.spec
 
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Build failed.
+    echo         If you see "Access is denied" on %DIST_BUILD_ROOT%\, close %APP_EXE%
+    echo         and any File Explorer windows showing that folder, then retry.
     exit /b 1
 )
 
+call :promote_build_output
+exit /b %ERRORLEVEL%
+
+REM ------------------------------------------------------------
+REM Subroutine: stop_running_app
+REM Purpose: End TotalCommanderClone.exe with retries (best effort).
+REM ------------------------------------------------------------
+:stop_running_app
+call :is_app_running
+if errorlevel 1 exit /b 0
+
+echo [INFO] Stopping %APP_EXE% (best effort)...
+for /L %%k in (1,1,10) do (
+    taskkill /IM %APP_EXE% /F >nul 2>&1
+    ping 127.0.0.1 -n 2 >nul
+    call :is_app_running
+    if errorlevel 1 goto :stop_running_app_released
+)
+call :is_app_running
+if not errorlevel 1 (
+    echo [WARN] %APP_EXE% is still running. Build will continue to %DIST_BUILD_ROOT%\.
+    echo         Close the app later to promote output into dist\.
+)
+:stop_running_app_released
+echo [INFO] Waiting for file handles to release...
+ping 127.0.0.1 -n 3 >nul
+exit /b 0
+
+REM ------------------------------------------------------------
+REM Subroutine: is_app_running
+REM Exit code 0 if %APP_EXE% is running, 1 if not.
+REM ------------------------------------------------------------
+:is_app_running
+tasklist /FI "IMAGENAME eq %APP_EXE%" 2>nul | find /I "%APP_EXE%" >nul
+if errorlevel 1 exit /b 1
+exit /b 0
+
+REM ------------------------------------------------------------
+REM Subroutine: try_clear_staging
+REM Purpose: Remove prior staging output before PyInstaller (non-fatal).
+REM ------------------------------------------------------------
+:try_clear_staging
+if not exist "%DIST_BUILD_ROOT%" exit /b 0
+
+echo [INFO] Clearing previous staging build at %DIST_BUILD_ROOT%\ ...
+for /L %%r in (1,1,6) do (
+    rmdir /s /q "%DIST_BUILD_ROOT%" 2>nul
+    if not exist "%DIST_BUILD_ROOT%" exit /b 0
+    ping 127.0.0.1 -n 2 >nul
+)
+
+if exist "%DIST_BUILD_ROOT%" (
+    echo [WARN] Could not fully remove "%DIST_BUILD_ROOT%" - PyInstaller will try anyway.
+)
+exit /b 0
+
+REM ------------------------------------------------------------
+REM Subroutine: promote_build_output
+REM Purpose: Move staging build into dist\ when the old folder is removable.
+REM          If dist\ is locked, offer an interactive delete-and-swap.
+REM ------------------------------------------------------------
+:promote_build_output
+if not exist "%DIST_STAGING%\%APP_EXE%" (
+    echo [ERROR] Expected output not found at %DIST_STAGING%\%APP_EXE%
+    exit /b 1
+)
+
+if exist "%DIST_FINAL%" (
+    call :remove_dist_final 6
+    if errorlevel 1 goto :promote_build_output_locked
+)
+
+call :complete_promote_swap
+if errorlevel 1 (
+    echo [WARN] Could not move staging into dist\. Output remains at %DIST_STAGING%\%APP_EXE%
+    exit /b 0
+)
+exit /b 0
+
+REM ------------------------------------------------------------
+REM Subroutine: remove_dist_final
+REM Purpose: Delete %DIST_FINAL% with retries. Arg1 = max attempts (default 6).
+REM Exit 0 on success, 1 if folder still exists.
+REM ------------------------------------------------------------
+:remove_dist_final
+setlocal EnableDelayedExpansion
+set "RR=6"
+if not "%~1"=="" set "RR=%~1"
+if exist "%DIST_FINAL%" (
+    echo [INFO] Attempting to replace %DIST_FINAL%\ ...
+)
+for /L %%r in (1,1,!RR!) do (
+    rmdir /s /q "%DIST_FINAL%" 2>nul
+    if not exist "%DIST_FINAL%" (
+        endlocal
+        exit /b 0
+    )
+    ping 127.0.0.1 -n 2 >nul
+)
+if exist "%DIST_FINAL%" (
+    endlocal
+    exit /b 1
+)
+endlocal
+exit /b 0
+
+REM ------------------------------------------------------------
+REM Subroutine: complete_promote_swap
+REM Purpose: Move staging into dist\, remove dist_build, print success.
+REM Exit 0 on success, 1 if move failed.
+REM ------------------------------------------------------------
+:complete_promote_swap
+if not exist "dist" mkdir "dist"
+move "%DIST_STAGING%" "%DIST_FINAL%" >nul 2>&1
+if errorlevel 1 exit /b 1
+
+rmdir "%DIST_BUILD_ROOT%" 2>nul
+
 echo.
-echo [INFO] Build complete. Output: dist\TotalCommanderClone\TotalCommanderClone.exe
+echo [INFO] Build complete. Output: %DIST_FINAL%\%APP_EXE%
 echo [INFO] Settings are stored in %%APPDATA%%\TotalCommanderClone (persists across rebuilds).
+exit /b 0
+
+REM ------------------------------------------------------------
+REM Subroutine: promote_build_output_locked
+REM Purpose: Build succeeded but dist\ is locked; offer delete-and-swap.
+REM ------------------------------------------------------------
+:promote_build_output_locked
+echo.
+echo [INFO] Build OK at %DIST_STAGING%\%APP_EXE%
+echo [WARN] Could not replace "%DIST_FINAL%" - files are locked.
+
+call :stop_running_app
+
+set "CONFIRM="
+set /p "CONFIRM=dist\TotalCommanderClone is locked. Delete it and switch to the new build? [Y/N] "
+if /I not "%CONFIRM%"=="Y" goto :promote_build_output_locked_decline
+
+echo [INFO] Removing locked %DIST_FINAL%\ ...
+call :remove_dist_final 10
+if errorlevel 1 goto :promote_build_output_locked_still_locked
+
+call :complete_promote_swap
+if errorlevel 1 goto :promote_build_output_locked_still_locked
+exit /b 0
+
+:promote_build_output_locked_still_locked
+echo.
+call :print_dist_lock_hints
+echo [ERROR] Could not delete "%DIST_FINAL%". New build remains at %DIST_STAGING%\%APP_EXE%
+exit /b 1
+
+:promote_build_output_locked_decline
+echo.
+echo [INFO] Keeping existing dist\ build. Run the new build from:
+echo         %DIST_STAGING%\%APP_EXE%
+echo [INFO] To switch dist\ to this build later, close locks on dist\ and run
+echo         scripts\build.bat again (confirm Y when prompted), or delete
+echo         "%DIST_FINAL%" manually and move dist_build\TotalCommanderClone into dist\.
+echo [INFO] Settings are stored in %%APPDATA%%\TotalCommanderClone (persists across rebuilds).
+exit /b 0
+
+REM ------------------------------------------------------------
+REM Subroutine: print_dist_lock_hints
+REM Purpose: Suggest what may be holding dist\TotalCommanderClone.
+REM ------------------------------------------------------------
+:print_dist_lock_hints
+echo [INFO] dist\TotalCommanderClone may still be locked by:
+call :is_app_running
+if not errorlevel 1 (
+    echo         - %APP_EXE% is still running
+)
+echo         - File Explorer with dist\ or TotalCommanderClone open
+echo         - A terminal whose current directory is under dist\
+echo         Close those, then run scripts\build.bat again.
 exit /b 0
