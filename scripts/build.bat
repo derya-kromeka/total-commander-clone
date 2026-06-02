@@ -47,10 +47,10 @@ if "%PYTHON_EXE%"=="" (
     exit /b 1
 )
 
-echo [INFO] Installing PyInstaller if needed...
-%PYTHON_EXE% %PYTHON_ARGS% -m pip install pyinstaller --quiet
+echo [INFO] Installing dependencies (requirements.txt)...
+%PYTHON_EXE% %PYTHON_ARGS% -m pip install -r requirements.txt --quiet
 if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Could not install PyInstaller.
+    echo [ERROR] Could not install requirements.
     exit /b 1
 )
 
@@ -61,16 +61,8 @@ if %ERRORLEVEL% EQU 0 (
     timeout /t 2 /nobreak >nul
 )
 
-echo [INFO] Building standalone .exe...
-%PYTHON_EXE% %PYTHON_ARGS% -m PyInstaller ^
-    --noconfirm ^
-    --clean ^
-    --noupx ^
-    --name TotalCommanderClone ^
-    --windowed ^
-    --icon "%ICON%" ^
-    --add-data "%ICON%;." ^
-    "%SCRIPT%"
+echo [INFO] Building standalone .exe (TotalCommanderClone.spec)...
+%PYTHON_EXE% %PYTHON_ARGS% -m PyInstaller --noconfirm --clean TotalCommanderClone.spec
 
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Build failed.

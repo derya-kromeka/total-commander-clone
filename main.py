@@ -34,6 +34,21 @@ def getBasePath():
 #          When frozen: uses %APPDATA% so settings persist across
 #          rebuilds. When dev: uses project directory.
 # ------------------------------------------------------------
+def configureFrozenQtEnvironment():
+    """Point Qt at bundled plugins when running as a PyInstaller one-folder build."""
+    if not getattr(sys, "frozen", False):
+        return
+    meipass = getattr(sys, "_MEIPASS", None)
+    if not meipass:
+        return
+    plugins = os.path.join(meipass, "PyQt5", "Qt5", "plugins")
+    if os.path.isdir(plugins):
+        os.environ.setdefault("QT_PLUGIN_PATH", plugins)
+        platforms = os.path.join(plugins, "platforms")
+        if os.path.isdir(platforms):
+            os.environ.setdefault("QT_QPA_PLATFORM_PLUGIN_PATH", platforms)
+
+
 def getConfigPath():
     if getattr(sys, 'frozen', False):
         if os.name == "nt":
@@ -83,6 +98,7 @@ def resolveAppIconPath(base_path):
 # ------------------------------------------------------------
 def main():
     configureWindowsTaskbarIdentity()
+    configureFrozenQtEnvironment()
 
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
@@ -105,7 +121,13 @@ def main():
     settings_manager = SettingsManager(config_path)
 
     font_size = int(settings_manager.getSetting("font_size", 10))
-    applyTheme(app, settings_manager.getSetting("theme_mode", "dark"), font_size)
+    ui_scale = settings_manager.getSetting("ui_scale", 100)
+    applyTheme(
+        app,
+        settings_manager.getSetting("theme_mode", "dark"),
+        font_size,
+        ui_scale,
+    )
 
     window = FileManagerApp(settings_manager)
     if icon_path:

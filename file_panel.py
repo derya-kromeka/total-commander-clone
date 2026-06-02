@@ -739,6 +739,21 @@ class FileSortFilterProxy(QSortFilterProxyModel):
 
 
 # ============================================================
+# Class: FileTableItemDelegate
+# Purpose: Elide long names in the middle; other columns elide on
+#          the right only when the column is narrower than the text.
+# ============================================================
+class FileTableItemDelegate(QStyledItemDelegate):
+
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        if index.column() == 0:
+            option.textElideMode = Qt.ElideMiddle
+        else:
+            option.textElideMode = Qt.ElideRight
+
+
+# ============================================================
 # Class: FileTableView
 # Purpose: QTableView subclass with drag-and-drop initiation,
 #          drop target visual feedback, and slow-click-to-rename
@@ -797,6 +812,10 @@ class FileTableView(QTableView):
         header.setSectionResizeMode(QHeaderView.Interactive)
         header.setSectionsMovable(False)
         header.setHighlightSections(False)
+        header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -1078,8 +1097,17 @@ class FilePanel(QWidget):
         self._scan_thread = None
         self._scan_progress = None
         self._column_width_clamping = False
+        self._freeze_column_widths = False
         self._column_width_locked = {k: False for k in self.COLUMN_VISIBILITY_KEYS}
         self._locked_column_width_px = {}
+        self._viewport_layout_timer = QTimer(self)
+        self._viewport_layout_timer.setSingleShot(True)
+        self._viewport_layout_timer.setInterval(50)
+        self._viewport_layout_timer.timeout.connect(self._fitColumnsToViewport)
+        self._column_width_save_timer = QTimer(self)
+        self._column_width_save_timer.setSingleShot(True)
+        self._column_width_save_timer.setInterval(400)
+        self._column_width_save_timer.timeout.connect(self._persistColumnWidthsToState)
 
         self._initUI()
         self._connectSignals()
@@ -1109,6 +1137,7 @@ class FilePanel(QWidget):
         self._path_edit.setObjectName("panelPathEdit")
         self._path_edit.setPlaceholderText("Enter or paste path, press Enter to go...")
         self._path_edit.setMinimumHeight(NAV_BAR_HEIGHT)
+        self._path_edit.setAlignment(Qt.AlignVCenter)
         self._path_edit.setToolTip(
             "Address bar\n\n"
             "Shows the folder open in this panel. Type or paste a path and press Enter "
@@ -1220,9 +1249,10 @@ class FilePanel(QWidget):
         self._drive_combo.setEditable(True)
         drive_line_edit = DriveLineEdit(self._drive_combo, self._drive_combo)
         drive_line_edit.setReadOnly(True)
-        drive_line_edit.setAlignment(Qt.AlignCenter)
+        drive_line_edit.setAlignment(Qt.AlignVCenter | Qt.AlignHCenter)
         drive_line_edit.setFrame(False)
         self._drive_combo.setLineEdit(drive_line_edit)
+        self._drive_line_edit = drive_line_edit
         drives = getWindowsDrives()
         if drives:
             self._drive_combo.addItems(drives)
@@ -1249,9 +1279,11 @@ class FilePanel(QWidget):
         drive_container_layout.addWidget(self._drive_arrow, 0, Qt.AlignVCenter)
 
         self._filter_edit = QLineEdit()
+        self._filter_edit.setObjectName("panelFilterEdit")
         self._filter_edit.setPlaceholderText("\U0001F50D Filter...")
         self._filter_edit.setMinimumWidth(120)
         self._filter_edit.setMinimumHeight(NAV_BAR_HEIGHT)
+        self._filter_edit.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         self._filter_edit.setClearButtonEnabled(True)
         self._filter_edit.setToolTip(
             "Filter\n\n"
@@ -1335,7 +1367,10 @@ class FilePanel(QWidget):
         self._table = FileTableView(self)
         self._table.setObjectName("panelFileTable")
         self._table.setModel(self._proxy_model)
+        self._table.setItemDelegate(FileTableItemDelegate(self._table))
         self._table.sortByColumn(0, Qt.AscendingOrder)
+        self._header_section_mins = []
+        self._refreshHeaderSectionMinimums()
         hdr = self._table.horizontalHeader()
         hdr.setContextMenuPolicy(Qt.CustomContextMenu)
         hdr.customContextMenuRequested.connect(self._onTableHeaderContextMenu)
@@ -1350,21 +1385,99 @@ class FilePanel(QWidget):
         self._frame = self
         self._updateFrameStyle()
         self._updateFilterPlaceholder()
+        if self._settings_manager is not None:
+            from theme import getUiMetrics, normalize_ui_scale
+            fs = int(self._settings_manager.getSetting("font_size", 10))
+            sc = normalize_ui_scale(self._settings_manager.getSetting("ui_scale", 100))
+            self.applyUiMetrics(getUiMetrics(fs, sc))
 
     # --------------------------------------------------------
-    # Column width persistence (first three columns; settings.json)
-    # Last column ("Date Modified") stretches to the pane edge — not persisted.
+    # Method: applyUiMetrics
+    # Purpose: Apply row height and nav bar sizes from Settings density.
     # --------------------------------------------------------
-    COLUMN_WIDTH_KEYS = ("name", "size", "type")
+    def applyUiMetrics(self, metrics):
+        if not metrics:
+            return
+        h = metrics["nav_bar_height"]
+        icon = metrics["nav_icon_size"]
+        icon_sz = QSize(icon, icon)
+
+        self._path_edit.setMinimumHeight(max(h, metrics.get("path_edit_height", h)))
+        self._refreshHeaderSectionMinimums()
+        for btn in (
+            self._btn_copy_path,
+            self._btn_paste_path,
+            self._btn_browse_folder,
+            self._btn_back,
+            self._btn_forward,
+            self._btn_up,
+            self._btn_home,
+            self._btn_new_folder,
+            self._btn_filter_options,
+        ):
+            btn.setFixedSize(30, h)
+            btn.setIconSize(icon_sz)
+        self._btn_filter_clear.setFixedHeight(h)
+        self._drive_combo.setFixedSize(metrics["drive_combo_width"], h)
+        self._drive_arrow.setFixedSize(14, h)
+        self._drive_container.setFixedSize(metrics["drive_combo_width"] + 14, h)
+        self._filter_edit.setFixedHeight(h)
+        if getattr(self, "_drive_line_edit", None) is not None:
+            self._drive_line_edit.setAlignment(Qt.AlignVCenter | Qt.AlignHCenter)
+        self._filter_edit.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+
+        vh = self._table.verticalHeader()
+        vh.setDefaultSectionSize(metrics["table_row_height"])
+        vh.setMinimumSectionSize(max(16, metrics["table_row_height"] - 4))
+
+    # --------------------------------------------------------
+    # Column width persistence (all columns; state.json per panel).
+    # After first layout or a manual resize, widths are frozen and may exceed
+    # the viewport — horizontal scroll appears instead of shrinking columns.
+    # --------------------------------------------------------
+    COLUMN_WIDTH_KEYS = ("name", "size", "type", "date_modified")
     COLUMN_VISIBILITY_KEYS = ("name", "size", "type", "date_modified")
     # Minimum column width as a fraction of table viewport (sum of mins must fit in vw).
     COLUMN_VIEWPORT_MIN_FRACTION = 0.05
+    NAME_COLUMN_VIEWPORT_MIN_FRACTION = 0.22
+    # Ignore / do not persist widths below this (avoids corrupt state from pre-layout saves).
+    MIN_PERSISTED_COLUMN_WIDTH = 48
+    DEFAULT_NAME_COLUMN_WIDTH = 260
+    DATE_COLUMN_MAX_WIDTH = 168
+    COLUMN_MIN_PIXELS = {
+        "name": 96,
+        "size": 54,
+        "type": 50,
+        "date_modified": 124,
+    }
+
+    def _refreshHeaderSectionMinimums(self):
+        """Pixel minimums so headers (Size, Type, Date Modified) are not clipped."""
+        hdr = self._table.horizontalHeader()
+        fm = hdr.fontMetrics()
+        pad = 18
+        self._header_section_mins = []
+        for label in FileSystemModel.COLUMNS:
+            self._header_section_mins.append(fm.horizontalAdvance(label) + pad)
+
+    def _minWidthForColumn(self, col, vw=None):
+        """Per-column floor: header text width and configured minimums."""
+        keys = self.COLUMN_VISIBILITY_KEYS
+        key = keys[col] if col < len(keys) else None
+        header_min = (
+            self._header_section_mins[col]
+            if col < len(self._header_section_mins)
+            else 24
+        )
+        cfg_min = self.COLUMN_MIN_PIXELS.get(key, 24) if key else 24
+        floor = max(header_min, cfg_min, 24)
+        if col == 0 and vw is not None:
+            pct = max(1, int(round(vw * self.NAME_COLUMN_VIEWPORT_MIN_FRACTION)))
+            floor = max(floor, pct)
+        return floor
 
     def _updateColumnStretchBehavior(self):
-        """
-        Use Interactive resize for all columns; widths are set explicitly by
-        _normalizeColumnWidthsForViewport so total width matches the viewport.
-        """
+        """Interactive resize on every column; no stretch-to-viewport modes."""
         hdr = self._table.horizontalHeader()
         n = self._source_model.columnCount()
         hdr.setStretchLastSection(False)
@@ -1377,6 +1490,35 @@ class FilePanel(QWidget):
         if 0 <= logical_index < len(keys):
             return keys[logical_index]
         return None
+
+    @classmethod
+    def _sanitizeColumnVisibility(cls, vis_dict):
+        """Ensure the Name column stays visible; fix corrupt %APPDATA% state."""
+        if not vis_dict:
+            return None
+        out = dict(vis_dict)
+        if out.get("name") is False:
+            out["name"] = True
+        visible = [out.get(k, True) for k in cls.COLUMN_VISIBILITY_KEYS]
+        if not any(visible):
+            out["name"] = True
+        return out
+
+    @classmethod
+    def _sanitizeColumnWidths(cls, widths_dict):
+        """Replace collapsed name/size/type widths from bad saves."""
+        if not widths_dict:
+            return None
+        out = dict(widths_dict)
+        min_w = cls.MIN_PERSISTED_COLUMN_WIDTH
+        name_w = out.get("name")
+        if name_w is None or not isinstance(name_w, (int, float)) or int(name_w) < min_w:
+            out["name"] = cls.DEFAULT_NAME_COLUMN_WIDTH
+        for key in cls.COLUMN_WIDTH_KEYS:
+            w = out.get(key)
+            if w is not None and isinstance(w, (int, float)) and 0 < int(w) < min_w:
+                out.pop(key, None)
+        return out
 
     def getColumnWidthLockState(self):
         """Return locked flags and pixel widths for persistence."""
@@ -1403,14 +1545,102 @@ class FilePanel(QWidget):
             else:
                 self._column_width_locked[k] = False
         self._locked_column_width_px.clear()
+        min_w = self.MIN_PERSISTED_COLUMN_WIDTH
         for k, w in widths_in.items():
-            if k in self.COLUMN_VISIBILITY_KEYS and isinstance(w, (int, float)) and w > 0:
+            if (
+                k in self.COLUMN_VISIBILITY_KEYS
+                and isinstance(w, (int, float))
+                and int(w) >= min_w
+            ):
                 self._locked_column_width_px[k] = int(w)
+            elif k in self.COLUMN_VISIBILITY_KEYS:
+                self._column_width_locked[k] = False
+
+    def _wouldLeaveNoUnlockedVisibleColumn(self, logical_index_being_locked):
+        """
+        True if every visible column except the one being locked is already locked,
+        so locking it would leave no flexible column for layout.
+        """
+        n = self._source_model.columnCount()
+        for c in range(n):
+            if self._table.isColumnHidden(c):
+                continue
+            k = self._columnKeyAt(c)
+            if not k:
+                continue
+            if c == logical_index_being_locked:
+                continue
+            if not self._column_width_locked.get(k):
+                return False
+        return True
+
+    def _scheduleFitColumnsToViewport(self):
+        """Coalesce rapid viewport resizes before the one-time initial fit."""
+        self._viewport_layout_timer.start()
+
+    def _onTableViewportResized(self):
+        if self._freeze_column_widths:
+            self._applyColumnMinimumWidthsOnly()
+        else:
+            self._scheduleFitColumnsToViewport()
+
+    def _applyColumnMinimumWidthsOnly(self):
+        """
+        Raise columns only when below header/config minimums.
+        Never shrink or stretch columns to match the viewport.
+        """
+        n = self._source_model.columnCount()
+        visible = [c for c in range(n) if not self._table.isColumnHidden(c)]
+        if not visible:
+            return
+        hdr = self._table.horizontalHeader()
+        hdr.setMinimumSectionSize(
+            min(self._minWidthForColumn(c) for c in visible)
+        )
+        self._column_width_clamping = True
+        try:
+            hdr.blockSignals(True)
+            for c in visible:
+                floor = self._minWidthForColumn(c)
+                if self._table.columnWidth(c) < floor:
+                    self._table.setColumnWidth(c, floor)
+        finally:
+            hdr.blockSignals(False)
+            self._column_width_clamping = False
+
+    def _persistColumnWidthsToState(self):
+        if self._settings_manager is None:
+            return
+        lock_state = self.getColumnWidthLockState()
+        panel_key = f"{self._panel_side}_panel"
+        current = dict(self._settings_manager.getPanelState(self._panel_side))
+        current.update(
+            {
+                "column_widths": self.getColumnWidths(),
+                "column_width_locked": lock_state["column_width_locked"],
+                "locked_column_widths": lock_state["locked_column_widths"],
+            }
+        )
+        self._settings_manager.setPanelState(self._panel_side, current)
+        self._settings_manager.saveSettings()
 
     def _setColumnWidthLock(self, logical_index, locked):
         """Lock or unlock column width; when locking, store current pixel width."""
         key = self._columnKeyAt(logical_index)
         if not key:
+            return
+        if locked and self._wouldLeaveNoUnlockedVisibleColumn(logical_index):
+            QMessageBox.information(
+                self,
+                "Lock column width",
+                "At least one visible column must stay unlocked so the panel can adjust "
+                "when you resize the window or the sidebar.",
+            )
+            act = self.sender()
+            if isinstance(act, QAction):
+                act.blockSignals(True)
+                act.setChecked(False)
+                act.blockSignals(False)
             return
         self._column_width_locked[key] = bool(locked)
         if locked:
@@ -1419,14 +1649,15 @@ class FilePanel(QWidget):
             )
         else:
             self._locked_column_width_px.pop(key, None)
-        self._normalizeColumnWidthsForViewport()
+        if self._freeze_column_widths:
+            self._applyColumnMinimumWidthsOnly()
+        else:
+            self._fitColumnsToViewport()
 
-    def _normalizeColumnWidthsForViewport(self):
+    def _fitColumnsToViewport(self):
         """
-        Enforce: sum of visible column widths <= viewport width; each visible
-        column >= max(5% of viewport, 24px) when possible. Locked columns keep
-        their stored width when possible; slack is taken from flexible columns
-        first, then locked columns only if necessary.
+        One-time / explicit layout: fit visible columns into the viewport width.
+        Not used after saved or user-set widths (_freeze_column_widths).
         """
         if self._column_width_clamping:
             return
@@ -1439,11 +1670,12 @@ class FilePanel(QWidget):
         if m == 0:
             return
 
-        pct_min = max(1, int(round(vw * self.COLUMN_VIEWPORT_MIN_FRACTION)))
-        min_each = max(24, pct_min)
-        if m * min_each > vw:
-            min_each = max(1, vw // m)
-        hdr.setMinimumSectionSize(min_each)
+        def col_floor(c):
+            return self._minWidthForColumn(c, vw)
+
+        hdr.setMinimumSectionSize(
+            min(col_floor(c) for c in visible) if visible else 24
+        )
 
         locked_set = set()
         for c in visible:
@@ -1455,12 +1687,13 @@ class FilePanel(QWidget):
 
         w = {}
         for c in visible:
-            w[c] = max(min_each, self._table.columnWidth(c))
+            floor = self._minWidthForColumn(c, vw)
+            w[c] = max(floor, self._table.columnWidth(c))
         for c in locked_set:
             k = keys[c]
             px = self._locked_column_width_px.get(k)
             if px is not None:
-                w[c] = max(min_each, int(px))
+                w[c] = max(col_floor(c), int(px))
 
         def total_width():
             return sum(w[c] for c in visible)
@@ -1469,22 +1702,23 @@ class FilePanel(QWidget):
         if total > vw:
             sum_l = sum(w[c] for c in locked_set)
             sum_f = sum(w[c] for c in flex)
-            min_flex_total = len(flex) * min_each
+            min_flex_total = sum(col_floor(c) for c in flex)
 
             if not flex:
                 if total > 0:
                     factor = vw / total
                     for c in visible:
-                        w[c] = max(min_each, int(w[c] * factor))
+                        w[c] = max(col_floor(c), int(w[c] * factor))
                     drift = vw - sum(w[c] for c in visible)
                     if drift != 0:
-                        w[visible[-1]] = max(min_each, w[visible[-1]] + drift)
+                        last = visible[-1]
+                        w[last] = max(col_floor(last), w[last] + drift)
             else:
                 max_lock_sum = max(0, vw - min_flex_total)
                 if sum_l > max_lock_sum and locked_set:
                     factor = max_lock_sum / sum_l if sum_l else 0
                     for c in locked_set:
-                        w[c] = max(min_each, int(w[c] * factor))
+                        w[c] = max(col_floor(c), int(w[c] * factor))
                     sum_l = sum(w[c] for c in locked_set)
 
                 rem = vw - sum_l
@@ -1493,19 +1727,20 @@ class FilePanel(QWidget):
                     base = rem // len(flex)
                     rmd = rem % len(flex)
                     for i, c in enumerate(flex):
-                        w[c] = max(1, base + (1 if i < rmd else 0))
+                        w[c] = max(col_floor(c), base + (1 if i < rmd else 0))
                 elif sum_f > 0:
                     factor = rem / sum_f
                     for c in flex:
-                        w[c] = max(min_each, int(w[c] * factor))
+                        w[c] = max(col_floor(c), int(w[c] * factor))
                     drift = rem - sum(w[c] for c in flex)
                     if drift != 0:
-                        w[flex[-1]] = max(min_each, w[flex[-1]] + drift)
+                        last_flex = flex[-1]
+                        w[last_flex] = max(col_floor(last_flex), w[last_flex] + drift)
 
             while total_width() > vw:
-                pool = [c for c in flex if w[c] > min_each]
+                pool = [c for c in flex if w[c] > col_floor(c)]
                 if not pool:
-                    pool = [c for c in locked_set if w[c] > min_each]
+                    pool = [c for c in locked_set if w[c] > col_floor(c)]
                 if not pool:
                     pool = [c for c in visible if w[c] > 1]
                 if not pool:
@@ -1515,31 +1750,42 @@ class FilePanel(QWidget):
         total = total_width()
         if total < vw:
             extra = vw - total
-            if flex:
+            date_col = self.COLUMN_VISIBILITY_KEYS.index("date_modified")
+            if date_col in visible:
+                date_cap = max(
+                    self._minWidthForColumn(date_col, vw),
+                    self.DATE_COLUMN_MAX_WIDTH,
+                )
+                if w[date_col] > date_cap:
+                    extra += w[date_col] - date_cap
+                    w[date_col] = date_cap
+            if 0 in visible and extra > 0:
+                w[0] += extra
+            elif flex and extra > 0:
                 w[flex[-1]] += extra
-            else:
+            elif extra > 0:
                 w[visible[-1]] += extra
         elif total > vw:
-            w[visible[-1]] -= total - vw
-            w[visible[-1]] = max(min_each, w[visible[-1]])
+            last = visible[-1]
+            w[last] -= total - vw
+            w[last] = max(col_floor(last), w[last])
 
         self._column_width_clamping = True
         try:
             hdr.blockSignals(True)
             for c in visible:
                 self._table.setColumnWidth(c, max(1, w[c]))
+            for c in locked_set:
+                k = keys[c]
+                self._locked_column_width_px[k] = self._table.columnWidth(c)
+            self._updateColumnStretchBehavior()
         finally:
             hdr.blockSignals(False)
             self._column_width_clamping = False
 
-        for c in locked_set:
-            k = keys[c]
-            self._locked_column_width_px[k] = self._table.columnWidth(c)
-
-        self._updateColumnStretchBehavior()
-
     def applyColumnVisibility(self, vis_dict):
         """Show/hide columns from saved state (keys: name, size, type, date_modified)."""
+        vis_dict = self._sanitizeColumnVisibility(vis_dict)
         if not vis_dict:
             return
         for col, key in enumerate(self.COLUMN_VISIBILITY_KEYS):
@@ -1548,7 +1794,10 @@ class FilePanel(QWidget):
             v = vis_dict.get(key)
             if v is not None:
                 self._table.setColumnHidden(col, not bool(v))
-        self._normalizeColumnWidthsForViewport()
+        if self._freeze_column_widths:
+            self._applyColumnMinimumWidthsOnly()
+        else:
+            self._fitColumnsToViewport()
 
     def getColumnVisibility(self):
         """Return visibility flags for each column."""
@@ -1558,24 +1807,41 @@ class FilePanel(QWidget):
             if col < self._source_model.columnCount()
         }
 
+    def relayoutColumns(self):
+        """Initial viewport fit once, then only enforce column minimum widths."""
+        if self._freeze_column_widths:
+            self._applyColumnMinimumWidthsOnly()
+        else:
+            self._fitColumnsToViewport()
+            self._freeze_column_widths = True
+
     def applyColumnWidths(self, widths_dict):
-        """Apply saved widths for name/size/type. Date column fills remaining width."""
+        """Apply saved column widths without shrinking to the viewport."""
+        widths_dict = self._sanitizeColumnWidths(widths_dict)
         if not widths_dict:
             return
+        min_w = self.MIN_PERSISTED_COLUMN_WIDTH
         for col, key in enumerate(self.COLUMN_WIDTH_KEYS):
             if col >= self._source_model.columnCount():
                 break
             w = widths_dict.get(key)
-            if w is not None and isinstance(w, (int, float)) and w > 0:
+            if (
+                w is not None
+                and isinstance(w, (int, float))
+                and int(w) >= min_w
+            ):
                 self._table.setColumnWidth(col, int(w))
-        self._normalizeColumnWidthsForViewport()
+        self._freeze_column_widths = True
+        self._applyColumnMinimumWidthsOnly()
 
     def getColumnWidths(self):
-        """Return fixed column widths for saving (last column stretches; omitted)."""
+        """Return column widths for persistence (all visible logical columns)."""
+        min_w = self.MIN_PERSISTED_COLUMN_WIDTH
         return {
             key: self._table.columnWidth(col)
             for col, key in enumerate(self.COLUMN_WIDTH_KEYS)
             if col < self._source_model.columnCount()
+            and self._table.columnWidth(col) >= min_w
         }
 
     # --------------------------------------------------------
@@ -1604,14 +1870,16 @@ class FilePanel(QWidget):
         )
         self._source_model.recursiveScanRequested.connect(self._onRecursiveScanRequested)
 
-        self._table.viewportResized.connect(self._normalizeColumnWidthsForViewport)
+        self._table.viewportResized.connect(self._onTableViewportResized)
         self._table.horizontalHeader().sectionResized.connect(self._onColumnSectionResized)
-        QTimer.singleShot(0, self._normalizeColumnWidthsForViewport)
+        QTimer.singleShot(0, self.relayoutColumns)
 
     def _onColumnSectionResized(self, _logical_index, _old_size, _new_size):
         if self._column_width_clamping:
             return
-        self._normalizeColumnWidthsForViewport()
+        self._freeze_column_widths = True
+        self._applyColumnMinimumWidthsOnly()
+        self._column_width_save_timer.start()
 
     # --------------------------------------------------------
     # Method: _installActivationEventFilters
@@ -1955,7 +2223,7 @@ class FilePanel(QWidget):
         if current and os.path.isdir(current):
             self._history_index = len(self._history) - 1
             self.navigateTo(current, add_to_history=False)
-        column_widths = data.get("column_widths")
+        column_widths = self._sanitizeColumnWidths(data.get("column_widths"))
         if column_widths:
             self.applyColumnWidths(column_widths)
         self.applyColumnWidthLockState(
@@ -1964,11 +2232,12 @@ class FilePanel(QWidget):
                 "locked_column_widths": data.get("locked_column_widths"),
             }
         )
-        column_visibility = data.get("column_visibility")
+        column_visibility = self._sanitizeColumnVisibility(data.get("column_visibility"))
         if column_visibility:
             self.applyColumnVisibility(column_visibility)
         else:
-            self._normalizeColumnWidthsForViewport()
+            self._fitColumnsToViewport()
+            self._freeze_column_widths = True
         fm = data.get("filter_mode")
         if fm in ("contains", "wildcard", "regex"):
             self._proxy_model.setFilterMode(fm)
@@ -2209,7 +2478,8 @@ class FilePanel(QWidget):
                 action.blockSignals(False)
                 return
         self._table.setColumnHidden(col, not visible)
-        self._normalizeColumnWidthsForViewport()
+        self._freeze_column_widths = True
+        self._applyColumnMinimumWidthsOnly()
 
     def _distributeColumnsEvenly(self):
         """Give each unlocked visible column an equal share; locked widths stay fixed."""
@@ -2228,7 +2498,8 @@ class FilePanel(QWidget):
                 locked.add(c)
         flex = [c for c in visible if c not in locked]
         if not flex:
-            self._normalizeColumnWidthsForViewport()
+            self._fitColumnsToViewport()
+            self._freeze_column_widths = True
             return
         fixed_sum = sum(max(1, self._table.columnWidth(c)) for c in locked)
         rem = max(1, vw - fixed_sum)
@@ -2243,7 +2514,8 @@ class FilePanel(QWidget):
         finally:
             hdr.blockSignals(False)
             self._column_width_clamping = False
-        self._normalizeColumnWidthsForViewport()
+        self._fitColumnsToViewport()
+        self._freeze_column_widths = True
 
     # --------------------------------------------------------
     # Filter options dialog and state

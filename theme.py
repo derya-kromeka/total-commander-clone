@@ -8,19 +8,143 @@ from PyQt5.QtGui import QFont
 
 
 # ------------------------------------------------------------
+# UI scale (Settings → Interface density)
+# ------------------------------------------------------------
+DEFAULT_UI_SCALE_PERCENT = 100
+UI_SCALE_PRESETS = (70, 75, 85, 100, 115)
+
+_UI_SCALE_LABELS = {
+    70: "Extra compact (70%)",
+    75: "Very compact (75%)",
+    85: "Compact (85%)",
+    100: "Normal (100%)",
+    115: "Comfortable (115%)",
+}
+
+
+def normalize_ui_scale(value):
+    """
+    Map settings value to a density preset percent (70/75/85/100/115).
+    Accepts int/float, legacy strings compact/normal/comfortable.
+    """
+    if isinstance(value, str):
+        key = value.strip().lower().replace(" ", "_")
+        if key in ("extra_compact", "extracompact", "70"):
+            return 70
+        if key in ("very_compact", "verycompact", "75"):
+            return 75
+        if key in ("compact", "85"):
+            return 85
+        if key in ("comfortable", "115", "large"):
+            return 115
+        if key in ("normal", "100"):
+            return 100
+    try:
+        n = int(round(float(value)))
+    except (TypeError, ValueError):
+        return DEFAULT_UI_SCALE_PERCENT
+    if n in UI_SCALE_PRESETS:
+        return n
+    if n <= 72:
+        return 70
+    if n <= 80:
+        return 75
+    if n <= 92:
+        return 85
+    if n >= 108:
+        return 115
+    return 100
+
+
+def ui_scale_label(percent):
+    return _UI_SCALE_LABELS.get(normalize_ui_scale(percent), "Normal (100%)")
+
+
+def step_ui_scale(current, direction):
+    """
+    Move to the next or previous Interface density preset.
+    direction: positive = larger (Comfortable), negative = smaller (Extra compact).
+    Returns the new percent, or the current value if already at the limit.
+    """
+    presets = UI_SCALE_PRESETS
+    current = normalize_ui_scale(current)
+    try:
+        idx = presets.index(current)
+    except ValueError:
+        idx = presets.index(DEFAULT_UI_SCALE_PERCENT)
+    new_idx = idx + (1 if direction > 0 else -1)
+    if 0 <= new_idx < len(presets):
+        return presets[new_idx]
+    return current
+
+
+def getUiMetrics(font_size_pt, ui_scale_percent=DEFAULT_UI_SCALE_PERCENT):
+    """
+    Pixel metrics for layout widgets and QSS (padding, min-heights).
+    font_size_pt comes from Settings; ui_scale_percent is a density preset percent.
+    Floors keep path bar, rows, and sidebar tabs usable at 70%.
+    """
+    scale = normalize_ui_scale(ui_scale_percent) / 100.0
+    b = max(8, min(24, int(font_size_pt)))
+
+    def px(base, minimum=1):
+        return max(minimum, int(round(base * scale)))
+
+    return {
+        "ui_scale_percent": normalize_ui_scale(ui_scale_percent),
+        "font_size_pt": b,
+        "nav_bar_height": px(26, 18),
+        "nav_icon_size": px(16, 11),
+        "table_row_height": px(22, 16),
+        "toolbar_icon": px(18, 14),
+        "bottom_bar_height": px(30, 22),
+        "center_panel_width": px(44, 36),
+        "center_button_min_height": px(28, 18),
+        "btn_min_height": px(18, 14),
+        "table_cell_pad_v": px(2, 1),
+        "table_cell_pad_h": px(6, 4),
+        "header_pad_v": px(4, 2),
+        "header_pad_h": px(8, 6),
+        "tree_item_pad_v": px(2, 1),
+        "tree_item_pad_h": px(4, 3),
+        "toolbtn_pad_v": px(3, 2),
+        "toolbtn_pad_h": px(8, 6),
+        "bottom_btn_pad_v": px(3, 2),
+        "bottom_btn_pad_h": px(10, 8),
+        "menu_item_pad_v": px(6, 4),
+        "menu_item_pad_h": px(24, 18),
+        "drive_combo_height": px(26, 18),
+        "drive_combo_width": px(58, 50),
+        "nav_line_pad_v": max(1, px(2, 1)),
+        "nav_line_pad_h": max(4, px(6, 4)),
+        "nav_filter_pad_right": px(24, 20),
+        "bookmark_btn_min_height": px(20, 16),
+        "path_edit_height": px(28, 20),
+        "path_edit_pad_v": px(3, 2),
+        "path_edit_pad_h": px(10, 6),
+        "sidebar_tab_min_width": px(92, 72),
+    }
+
+
+# ------------------------------------------------------------
 # Font sizes for QSS (must track Settings "Font size" so the
 # app does not ignore QApplication font until Settings is opened).
 # ------------------------------------------------------------
-def _fontSizesPt(base_pt):
+def _fontSizesPt(base_pt, scale_factor=1.0):
     """Scale theme text sizes from the user’s base font size (pt)."""
     b = max(8, min(24, int(base_pt)))
+    sf = max(0.75, min(1.25, float(scale_factor)))
+
+    def scaled(delta):
+        return max(6, int(round((b + delta) * sf)))
+
     return {
-        "base": b,
-        "toolbar": b + 3,
-        "small": max(8, b + 1),
-        "tiny": max(7, b - 1),
-        "micro": max(6, b - 2),
-        "center_glyph": b + 8,
+        "base": max(8, int(round(b * sf))),
+        "toolbar": scaled(2),
+        "small": scaled(1),
+        "tiny": max(7, scaled(0)),
+        "micro": max(6, scaled(-1)),
+        "center_glyph": scaled(6),
     }
 
 
@@ -69,9 +193,13 @@ COLORS = {
 # Purpose: Returns the complete QSS stylesheet string for the
 #          dark theme applied to the entire application.
 # ------------------------------------------------------------
-def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
+def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     c = COLORS
-    fs = _fontSizesPt(font_size_pt)
+    if metrics is None:
+        metrics = getUiMetrics(font_size_pt, DEFAULT_UI_SCALE_PERCENT)
+    sf = metrics["ui_scale_percent"] / 100.0
+    fs = _fontSizesPt(font_size_pt, sf)
+    m = metrics
     return f"""
 
     /* ====================================================== */
@@ -82,6 +210,7 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
         color: {c['text']};
         font-family: "Segoe UI", "Roboto", sans-serif;
         font-size: {fs['base']}pt;
+        font-weight: normal;
         border: none;
     }}
 
@@ -103,7 +232,7 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
     }}
     QMenuBar::item {{
         background: transparent;
-        padding: 6px 12px;
+        padding: {m['menu_item_pad_v']}px 12px;
         border-radius: 4px;
     }}
     QMenuBar::item:selected {{
@@ -121,7 +250,7 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
         padding: 4px;
     }}
     QMenu::item {{
-        padding: 8px 30px 8px 20px;
+        padding: {m['menu_item_pad_v']}px {m['menu_item_pad_h']}px {m['menu_item_pad_v']}px 20px;
         border-radius: 4px;
     }}
     QMenu::item:selected {{
@@ -155,7 +284,7 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
         color: {c['text']};
         border: 1px solid transparent;
         border-radius: 5px;
-        padding: 5px 10px;
+        padding: {m['toolbtn_pad_v']}px {m['toolbtn_pad_h']}px;
         font-size: {fs['toolbar']}pt;
     }}
     QToolButton:hover {{
@@ -178,8 +307,8 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
         color: {c['text']};
         border: 1px solid {c['border']};
         border-radius: 6px;
-        padding: 6px 16px;
-        min-height: 20px;
+        padding: 4px 12px;
+        min-height: {m['btn_min_height']}px;
     }}
     QPushButton:hover {{
         background-color: {c['button_hover']};
@@ -231,6 +360,15 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
     QLineEdit:read-only {{
         background-color: {c['surface0']};
     }}
+    QLineEdit#panelPathEdit {{
+        min-height: {m['path_edit_height']}px;
+        padding: {m['path_edit_pad_v']}px {m['path_edit_pad_h']}px;
+    }}
+    QLineEdit#panelFilterEdit {{
+        min-height: {m['nav_bar_height']}px;
+        max-height: {m['nav_bar_height']}px;
+        padding: {m['nav_line_pad_v']}px {m['nav_filter_pad_right']}px {m['nav_line_pad_v']}px {m['nav_line_pad_h']}px;
+    }}
 
     /* ====================================================== */
     /* Table View (File Listing)                               */
@@ -247,7 +385,7 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
         outline: none;
     }}
     QTableView::item {{
-        padding: 4px 8px;
+        padding: {m['table_cell_pad_v']}px {m['table_cell_pad_h']}px;
         border: none;
     }}
     QTableView::item:hover {{
@@ -275,8 +413,10 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
         border: none;
         border-right: 1px solid {c['surface0']};
         border-bottom: 1px solid {c['border']};
-        padding: 6px 10px;
+        padding: {m['header_pad_v']}px {m['header_pad_h']}px;
         font-weight: bold;
+        font-size: {fs['small']}pt;
+        min-height: {max(m['table_row_height'] - 2, 20)}px;
     }}
     QHeaderView::section:hover {{
         background-color: {c['surface0']};
@@ -339,10 +479,11 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
     /* ====================================================== */
     QSplitter::handle {{
         background-color: {c['border']};
-        width: 2px;
+        width: 4px;
     }}
     QSplitter::handle:hover {{
         background-color: {c['active_border']};
+        width: 4px;
     }}
 
     /* ====================================================== */
@@ -510,9 +651,20 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
         color: {c['subtext0']};
         border: 1px solid {c['border']};
         border-bottom: none;
-        padding: 8px 16px;
+        padding: 6px 14px;
+        min-width: {m['sidebar_tab_min_width']}px;
         border-top-left-radius: 6px;
         border-top-right-radius: 6px;
+        font-size: {fs['small']}pt;
+    }}
+    QTabWidget#sidebarTabs::pane {{
+        border: 1px solid {c['border']};
+        border-radius: 0 0 6px 6px;
+        top: -1px;
+    }}
+    QTabWidget#sidebarTabs QTabBar::tab {{
+        min-width: {m['sidebar_tab_min_width']}px;
+        padding: 6px 12px;
     }}
     QTabBar::tab:selected {{
         background-color: {c['base']};
@@ -572,9 +724,12 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
         background-color: transparent;
         border: 1px solid {c['border']};
         border-radius: 4px;
-        padding: 5px 14px;
+        padding: {m['bottom_btn_pad_v']}px {m['bottom_btn_pad_h']}px;
         font-weight: bold;
+        font-size: {fs['small']}pt;
         color: {c['subtext1']};
+        min-width: 0;
+        max-width: 140px;
     }}
     QFrame#bottomBar QPushButton:hover {{
         background-color: {c['button_hover']};
@@ -588,18 +743,18 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
     QFrame#centerPanel {{
         background-color: {c['mantle']};
         border: none;
-        min-width: 48px;
-        max-width: 48px;
+        min-width: {m['center_panel_width']}px;
+        max-width: {m['center_panel_width']}px;
     }}
     QFrame#centerPanel QPushButton {{
         background-color: {c['button']};
         color: {c['subtext1']};
         border: 1px solid {c['border']};
         border-radius: 5px;
-        padding: 4px 2px;
+        padding: 2px 1px;
         font-size: {fs['center_glyph']}pt;
         font-weight: bold;
-        min-height: 36px;
+        min-height: {m['center_button_min_height']}px;
     }}
     QFrame#centerPanel QPushButton:hover {{
         background-color: {c['button_hover']};
@@ -625,7 +780,7 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
         outline: none;
     }}
     QTreeWidget::item {{
-        padding: 4px 6px;
+        padding: {m['tree_item_pad_v']}px {m['tree_item_pad_h']}px;
     }}
     QTreeWidget::item:hover {{
         background-color: {c['hover']};
@@ -637,22 +792,23 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
     /* Do not style ::branch so the default expand/collapse arrows remain visible. */
 
     QPushButton#bookmarksToolButton {{
-        padding: 2px 8px;
+        padding: 2px 6px;
         font-size: {fs['small']}pt;
-        min-height: 22px;
+        min-height: {m['bookmark_btn_min_height']}px;
+        min-width: 0;
     }}
 
     /* ====================================================== */
     /* Drive selector combo (file panel nav bar)                */
     /* ====================================================== */
     QComboBox#driveCombo {{
-        min-width: 58px;
-        max-width: 58px;
-        min-height: 28px;
-        max-height: 28px;
+        min-width: {m['drive_combo_width']}px;
+        max-width: {m['drive_combo_width']}px;
+        min-height: {m['nav_bar_height']}px;
+        max-height: {m['nav_bar_height']}px;
         padding: 0;
         font-weight: bold;
-        font-size: {fs['toolbar']}pt;
+        font-size: {fs['small']}pt;
         border-top-right-radius: 0;
         border-bottom-right-radius: 0;
     }}
@@ -665,8 +821,16 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
     }}
     QComboBox#driveCombo QLineEdit {{
         background: transparent;
+        border: none;
+        margin: 0;
         padding: 0 4px;
+        min-height: 0;
+        max-height: {m['nav_bar_height']}px;
         text-align: center;
+    }}
+    QComboBox#driveCombo QLineEdit:focus {{
+        border: none;
+        outline: none;
     }}
     QLabel#driveArrow {{
         color: {c['text']};
@@ -711,7 +875,7 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
     QPushButton#libraryToolButton {{
         padding: 2px 8px;
         font-size: {fs['small']}pt;
-        min-height: 22px;
+        min-height: {m['bookmark_btn_min_height']}px;
     }}
 
     QListWidget {{
@@ -722,7 +886,7 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
         outline: none;
     }}
     QListWidget::item {{
-        padding: 4px 6px;
+        padding: {m['tree_item_pad_v']}px {m['tree_item_pad_h']}px;
     }}
     QListWidget::item:hover {{
         background-color: {c['hover']};
@@ -734,7 +898,7 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10):
     """
 
 
-def applyTheme(app, theme_mode, font_size_pt=None):
+def applyTheme(app, theme_mode, font_size_pt=None, ui_scale_percent=None):
     """
     Apply dark (custom QSS), light (Fusion), or system default style + palette.
     Expects app._system_style_name and app._system_palette set at startup (see main.py).
@@ -742,6 +906,8 @@ def applyTheme(app, theme_mode, font_size_pt=None):
     font_size_pt: optional base font size from Settings. When None, uses app.font()
     point size (falls back to 10). Always updates QApplication font so light/system
     themes match Settings on startup.
+
+    ui_scale_percent: density preset percent — spacing and control sizes (see getUiMetrics).
     """
     from PyQt5.QtWidgets import QStyleFactory
 
@@ -751,12 +917,23 @@ def applyTheme(app, theme_mode, font_size_pt=None):
     else:
         font_size_pt = int(font_size_pt)
 
-    app.setFont(QFont("Segoe UI", font_size_pt))
+    if ui_scale_percent is None:
+        ui_scale_percent = getattr(app, "_ui_scale_percent", DEFAULT_UI_SCALE_PERCENT)
+    ui_scale_percent = normalize_ui_scale(ui_scale_percent)
+    app._ui_scale_percent = ui_scale_percent
+    metrics = getUiMetrics(font_size_pt, ui_scale_percent)
+    app._ui_metrics = metrics
+
+    app_font = QFont("Segoe UI", font_size_pt)
+    app_font.setStyleStrategy(QFont.PreferAntialias)
+    if font_size_pt <= 10:
+        app_font.setWeight(QFont.Medium)
+    app.setFont(app_font)
 
     mode = (theme_mode or "dark").lower()
 
     if mode == "dark":
-        app.setStyleSheet(getDarkThemeStylesheet(font_size_pt=font_size_pt))
+        app.setStyleSheet(getDarkThemeStylesheet(font_size_pt=font_size_pt, metrics=metrics))
         return
 
     app.setStyleSheet("")

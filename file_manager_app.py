@@ -13,9 +13,9 @@ from PyQt5.QtWidgets import (
     QFrame, QHBoxLayout, QPushButton, QVBoxLayout, QWidget,
     QMenu, QMessageBox, QInputDialog, QApplication, QLabel,
     QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QFileDialog,
-    QStyle, QTabWidget, QStackedWidget,
+    QStyle, QTabWidget, QStackedWidget, QSizePolicy,
 )
-from PyQt5.QtCore import Qt, QUrl, QTimer
+from PyQt5.QtCore import Qt, QUrl, QTimer, QRect, QSize, QEvent
 from PyQt5.QtGui import QKeySequence, QDesktopServices, QIcon
 
 from file_panel import FilePanel
@@ -31,7 +31,52 @@ from windows_shell_clipboard import setFileClipboard, getClipboardDropEffect
 from app_version import APP_VERSION, APP_NAME, getWindowTitle
 from file_properties_dialog import showFileProperties
 from settings_dialog import SettingsDialog
-from theme import applyTheme
+from theme import applyTheme, getUiMetrics, normalize_ui_scale, step_ui_scale, ui_scale_label
+
+
+# ------------------------------------------------------------
+# Function: sanitizeWindowGeometry
+# Purpose: Clamps size and repositions the window onto a visible
+#          screen (frozen builds use %APPDATA% settings that may
+#          reference a disconnected monitor).
+# ------------------------------------------------------------
+def sanitizeWindowGeometry(geo):
+    defaults = {"x": 100, "y": 100, "width": 1400, "height": 800}
+    if not isinstance(geo, dict):
+        return dict(defaults)
+
+    min_w, min_h = 800, 500
+    try:
+        w = int(geo.get("width", defaults["width"]))
+        h = int(geo.get("height", defaults["height"]))
+        x = int(geo.get("x", defaults["x"]))
+        y = int(geo.get("y", defaults["y"]))
+    except (TypeError, ValueError):
+        return dict(defaults)
+
+    w = max(min_w, min(w, 7680))
+    h = max(min_h, min(h, 4320))
+
+    app = QApplication.instance()
+    if app is None:
+        return {"x": x, "y": y, "width": w, "height": h}
+
+    screens = app.screens()
+    if not screens:
+        return {"x": defaults["x"], "y": defaults["y"], "width": w, "height": h}
+
+    window_rect = QRect(x, y, w, h)
+    if any(window_rect.intersects(s.availableGeometry()) for s in screens):
+        return {"x": x, "y": y, "width": w, "height": h}
+
+    primary = app.primaryScreen()
+    if primary is None:
+        return dict(defaults)
+
+    avail = primary.availableGeometry()
+    x = avail.x() + max(0, (avail.width() - w) // 2)
+    y = avail.y() + max(0, (avail.height() - h) // 2)
+    return {"x": x, "y": y, "width": w, "height": h}
 
 
 # ============================================================
@@ -61,8 +106,34 @@ class FileManagerApp(QMainWindow):
         self._initPanels()
         self._initBottomBar()
         self._initShortcuts()
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
         self._restoreState()
+        self._applyUiMetrics()
         self._updateMirrorTooltips()
+        self._post_show_layout_done = False
+
+    # --------------------------------------------------------
+    # Method: showEvent
+    # Purpose: After the first show, re-layout splitter and columns
+    #          once the window has real geometry (restored widths may
+    #          have been saved while the viewport was still tiny).
+    # --------------------------------------------------------
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._post_show_layout_done:
+            self._post_show_layout_done = True
+            QTimer.singleShot(0, self._runPostShowLayout)
+
+    def _runPostShowLayout(self):
+        sizes = self._main_splitter.sizes()
+        if sizes and sizes[0] < 180:
+            rest = max(400, sum(sizes) - 260)
+            self._main_splitter.setSizes([260, rest])
+        self._applyUiMetrics()
+        self._left_panel.relayoutColumns()
+        self._right_panel.relayoutColumns()
 
     # --------------------------------------------------------
     # Method: _initWindow
@@ -71,12 +142,16 @@ class FileManagerApp(QMainWindow):
     # --------------------------------------------------------
     def _initWindow(self):
         self.setWindowTitle(getWindowTitle())
-        geo = self._settings.getSetting("window_geometry", {})
+        raw_geo = self._settings.getSetting("window_geometry", {})
+        geo = sanitizeWindowGeometry(raw_geo)
+        if geo != raw_geo:
+            self._settings.setSetting("window_geometry", geo)
+            self._settings.saveSettings()
         self.setGeometry(
-            geo.get("x", 100),
-            geo.get("y", 100),
-            geo.get("width", 1400),
-            geo.get("height", 800),
+            geo["x"],
+            geo["y"],
+            geo["width"],
+            geo["height"],
         )
         self.setMinimumSize(800, 500)
 
@@ -164,7 +239,8 @@ class FileManagerApp(QMainWindow):
         self._action_settings = QAction("Settings...", self)
         self._action_settings.setToolTip(
             "Settings\n\n"
-            "Theme, font size, hidden files, delete confirmation, and default folder paths for new sessions."
+            "Theme, font size, interface density, hidden files, delete confirmation, "
+            "and default folder paths. Shortcut: Ctrl+,"
         )
         self._action_settings.triggered.connect(self._onOpenSettings)
         edit_menu.addAction(self._action_settings)
@@ -191,6 +267,13 @@ class FileManagerApp(QMainWindow):
         )
         self._action_show_hidden.triggered.connect(self._onToggleHidden)
         view_menu.addAction(self._action_show_hidden)
+
+        view_menu.addSeparator()
+
+        self._action_settings_view = QAction("Settings...", self)
+        self._action_settings_view.setToolTip(self._action_settings.toolTip())
+        self._action_settings_view.triggered.connect(self._onOpenSettings)
+        view_menu.addAction(self._action_settings_view)
 
         view_menu.addSeparator()
         self._action_swap_panes = QAction("Swap Pane Paths\tCtrl+Shift+S", self)
@@ -275,11 +358,11 @@ class FileManagerApp(QMainWindow):
     # Purpose: Creates the main toolbar with action buttons.
     # --------------------------------------------------------
     def _initToolBar(self):
-        toolbar = QToolBar("Main Toolbar", self)
-        toolbar.setMovable(False)
-        toolbar.setIconSize(toolbar.iconSize())
-        self.addToolBar(toolbar)
+        self._toolbar = QToolBar("Main Toolbar", self)
+        self._toolbar.setMovable(False)
+        self.addToolBar(self._toolbar)
         style = QApplication.instance().style()
+        toolbar = self._toolbar
 
         self._tb_copy = QAction("\U0001F4CB Copy (F6)", self)
         self._tb_copy.setToolTip(
@@ -355,6 +438,74 @@ class FileManagerApp(QMainWindow):
         self._tb_refresh.triggered.connect(self._onRefresh)
         toolbar.addAction(self._tb_refresh)
 
+        toolbar.addSeparator()
+
+        self._tb_settings = QAction("\u2699 Settings", self)
+        self._tb_settings.setToolTip(
+            "Settings\n\n"
+            "Theme, font size, interface density (Compact/Normal/Comfortable), and more. "
+            "Shortcut: Ctrl+,"
+        )
+        self._tb_settings.triggered.connect(self._onOpenSettings)
+        toolbar.addAction(self._tb_settings)
+
+    # --------------------------------------------------------
+    # Method: _applyUiMetrics
+    # Purpose: Apply toolbar icon size, bottom bar height, and panel metrics.
+    # --------------------------------------------------------
+    def _applyUiMetrics(self):
+        font_size = int(self._settings.getSetting("font_size", 10))
+        ui_scale = normalize_ui_scale(self._settings.getSetting("ui_scale", 100))
+        metrics = getUiMetrics(font_size, ui_scale)
+        icon = metrics["toolbar_icon"]
+        if hasattr(self, "_toolbar"):
+            self._toolbar.setIconSize(QSize(icon, icon))
+        if hasattr(self, "_bottom_bar"):
+            self._bottom_bar.setFixedHeight(metrics["bottom_bar_height"])
+        if hasattr(self, "_center_buttons"):
+            w = metrics["center_panel_width"]
+            self._center_buttons.setFixedWidth(w)
+        self._left_panel.applyUiMetrics(metrics)
+        self._right_panel.applyUiMetrics(metrics)
+
+    # --------------------------------------------------------
+    # Method: _adjustUiScale
+    # Purpose: Step Interface density (85/100/115) and refresh UI live.
+    # --------------------------------------------------------
+    def _adjustUiScale(self, direction):
+        current = normalize_ui_scale(self._settings.getSetting("ui_scale", 100))
+        new_scale = step_ui_scale(current, direction)
+        if new_scale == current:
+            return False
+
+        self._settings.setSetting("ui_scale", new_scale)
+        app = QApplication.instance()
+        applyTheme(
+            app,
+            self._settings.getSetting("theme_mode", "dark"),
+            int(self._settings.getSetting("font_size", 10)),
+            new_scale,
+        )
+        self._applyUiMetrics()
+        self._left_panel.relayoutColumns()
+        self._right_panel.relayoutColumns()
+        self._settings.saveSettings()
+        self._showStatus(f"Interface density: {ui_scale_label(new_scale)}")
+        return True
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Wheel:
+            mods = QApplication.keyboardModifiers()
+            if mods & Qt.ControlModifier:
+                delta = event.angleDelta().y()
+                if delta == 0:
+                    delta = event.angleDelta().x()
+                if delta != 0:
+                    direction = 1 if delta > 0 else -1
+                    if self._adjustUiScale(direction):
+                        return True
+        return super().eventFilter(obj, event)
+
     # --------------------------------------------------------
     # Method: _initPanels
     # Purpose: Creates the layout: bookmarks pane | dual file panes
@@ -418,17 +569,25 @@ class FileManagerApp(QMainWindow):
             1,
             "Libraries\n\nTag-based library roots and matching folders.",
         )
-        self._sidebar_tabs.setMinimumWidth(100)
-        self._sidebar_tabs.setMaximumWidth(400)
+        sidebar_tab_bar = self._sidebar_tabs.tabBar()
+        sidebar_tab_bar.setElideMode(Qt.ElideNone)
+        sidebar_tab_bar.setExpanding(False)
+        sidebar_tab_bar.setUsesScrollButtons(True)
+        self._sidebar_tabs.setMinimumWidth(200)
 
         self._main_splitter = QSplitter(Qt.Horizontal)
         self._main_splitter.addWidget(self._sidebar_tabs)
         self._main_splitter.addWidget(file_panes_widget)
+
+        # Prevent sidebar from collapsing to zero; file area can shrink freely.
+        self._main_splitter.setCollapsible(0, False)
+        self._main_splitter.setCollapsible(1, True)
+
         bm_width = self._settings.getState("bookmarks_panel_width")
-        if bm_width and isinstance(bm_width, (int, float)) and 100 <= bm_width <= 400:
+        if bm_width and isinstance(bm_width, (int, float)) and 180 <= bm_width <= 600:
             self._main_splitter.setSizes([int(bm_width), 1200])
         else:
-            self._main_splitter.setSizes([200, 1200])
+            self._main_splitter.setSizes([260, 1200])
 
         main_layout.addWidget(self._main_splitter, 1)
 
@@ -479,8 +638,8 @@ class FileManagerApp(QMainWindow):
         frame = QFrame()
         frame.setObjectName("centerPanel")
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(2, 8, 2, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(2, 4, 2, 4)
+        layout.setSpacing(4)
 
         layout.addStretch(1)
 
@@ -497,7 +656,7 @@ class FileManagerApp(QMainWindow):
         self._lbl_copy.setAlignment(Qt.AlignCenter)
         layout.addWidget(self._lbl_copy)
 
-        layout.addSpacing(12)
+        layout.addSpacing(6)
 
         self._btn_move_dir = QPushButton()
         self._btn_move_dir.setToolTip(
@@ -512,7 +671,7 @@ class FileManagerApp(QMainWindow):
         self._lbl_move.setAlignment(Qt.AlignCenter)
         layout.addWidget(self._lbl_move)
 
-        layout.addSpacing(16)
+        layout.addSpacing(8)
 
         self._btn_swap = QPushButton("\u21C4")
         self._btn_swap.setToolTip(
@@ -527,7 +686,7 @@ class FileManagerApp(QMainWindow):
         self._lbl_swap.setAlignment(Qt.AlignCenter)
         layout.addWidget(self._lbl_swap)
 
-        layout.addSpacing(16)
+        layout.addSpacing(8)
 
         self._btn_mirror = QPushButton("\u229C")
         self._btn_mirror.setFocusPolicy(Qt.NoFocus)
@@ -578,11 +737,10 @@ class FileManagerApp(QMainWindow):
     #          bar with F-key shortcuts.
     # --------------------------------------------------------
     def _initBottomBar(self):
-        bottom_frame = QFrame()
-        bottom_frame.setObjectName("bottomBar")
-        bottom_frame.setFixedHeight(38)
+        self._bottom_bar = QFrame()
+        self._bottom_bar.setObjectName("bottomBar")
 
-        layout = QHBoxLayout(bottom_frame)
+        layout = QHBoxLayout(self._bottom_bar)
         layout.setContentsMargins(6, 2, 6, 2)
         layout.setSpacing(4)
 
@@ -624,9 +782,11 @@ class FileManagerApp(QMainWindow):
             btn.setToolTip(tip)
             btn.clicked.connect(callback)
             btn.setFocusPolicy(Qt.NoFocus)
-            layout.addWidget(btn, 1)
+            btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+            layout.addWidget(btn)
+        layout.addStretch(1)
 
-        self.centralWidget().layout().addWidget(bottom_frame)
+        self.centralWidget().layout().addWidget(self._bottom_bar)
 
     # --------------------------------------------------------
     # Method: _initStatusBar
@@ -664,6 +824,7 @@ class FileManagerApp(QMainWindow):
             QKeySequence("Ctrl+Shift+S"):                 self._onSwapPanels,
             QKeySequence("Ctrl+Shift+L"):                 self._onToggleLibraryBrowserActive,
             QKeySequence("Ctrl+Shift+M"):                 self._onMirrorToOther,
+            QKeySequence("Ctrl+,"):                       self._onOpenSettings,
         }
 
         for key_seq, callback in shortcuts.items():
@@ -1037,7 +1198,15 @@ class FileManagerApp(QMainWindow):
         self._right_panel.setShowHidden(values["show_hidden_files"])
 
         app = QApplication.instance()
-        applyTheme(app, values["theme_mode"], int(values["font_size"]))
+        applyTheme(
+            app,
+            values["theme_mode"],
+            int(values["font_size"]),
+            values["ui_scale"],
+        )
+        self._applyUiMetrics()
+        self._left_panel.relayoutColumns()
+        self._right_panel.relayoutColumns()
 
         self._settings.saveSettings()
         self._updateMirrorTooltips()
@@ -1675,6 +1844,10 @@ class FileManagerApp(QMainWindow):
     # Window Close: Save State
     # --------------------------------------------------------
     def closeEvent(self, event):
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
+
         geo = self.geometry()
         self._settings.setSetting("window_geometry", {
             "x": geo.x(),
@@ -1687,7 +1860,7 @@ class FileManagerApp(QMainWindow):
         self._settings.setPanelState("right", self._right_panel.getHistoryData())
 
         bm_width = self._main_splitter.sizes()[0]
-        if bm_width >= 100:
+        if bm_width >= 180:
             self._settings.setState("bookmarks_panel_width", bm_width)
 
         structure = self._bookmarks_panel.getStructure()

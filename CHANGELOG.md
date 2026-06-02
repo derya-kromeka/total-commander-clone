@@ -9,7 +9,117 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Placeholder for upcoming changes. When you ship, move items under a dated version section and bump `APP_VERSION` in `app_version.py`.
+- Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
+
+## [0.4.36] - 2026-06-02
+
+### Fixed
+
+- **File list column resize**: Manual column widths (especially **Name**) no longer bounce back after drag; viewport normalization runs only on first layout or **Distribute columns evenly**, not on every header resize or panel resize.
+- **Horizontal scroll**: When total column width exceeds the file table viewport, a horizontal scrollbar appears instead of forcing all columns to fit the window.
+- **Column width persistence**: All four columns are saved to panel state when you finish resizing a header (debounced); restored widths are applied without shrinking to the viewport.
+
+## [0.4.35] - 2026-06-02
+
+### Fixed
+
+- **Nav bar drive combo and filter field**: Tighter nav-specific padding and explicit heights so text is not clipped at 70–100% density; drive inner editor no longer draws a nested border; filter field reserves right inset for the clear (×) control so it does not overlap the border.
+
+## [0.4.34] - 2026-06-02
+
+### Added
+
+- **Interface density** presets **Extra compact (70%)** and **Very compact (75%)** below Compact (85%). **Ctrl+mouse wheel** and **Edit → Settings** step through all five levels (70 → 75 → 85 → 100 → 115). Layout metrics use minimum floors so path bar, table rows, and sidebar tabs stay readable at 70%.
+
+## [0.4.33] - 2026-06-02
+
+### Fixed
+
+- **File list columns**: Size, Type, and Date Modified headers no longer clip to fragments like “iz”/“yp”; each column has a header-aware minimum width, extra space goes to **Name** (Date Modified is capped), and long names use middle elision.
+- **Path bar**: Reduced vertical padding and explicit min-height so address text is not clipped at the top.
+- **Sidebar tabs**: Bookmarks/Libraries tabs show full labels (no elide, min tab width, wider default sidebar).
+- **Bookmarks toolbar**: Shorter **Collapse** / **Expand** button labels fit narrow sidebars.
+- **F-key bar**: Buttons size to their labels instead of stretching across the window.
+- **Typography**: Slightly stronger default font weight at small sizes for clearer text.
+
+## [0.4.32] - 2026-06-02
+
+### Added
+
+- **Ctrl+mouse wheel** adjusts **Interface density** in place: wheel up steps toward **Comfortable (115%)**, wheel down toward **Compact (85%)**, using the same 85/100/115 presets as **Edit → Settings**. The choice is saved to `settings.json` and the status bar briefly shows the new density label.
+
+## [0.4.31] - 2026-06-02
+
+### Added
+
+- **Interface density** in **Edit → Settings** (also **View → Settings**, toolbar **⚙ Settings**, **Ctrl+,**): choose **Compact (85%)**, **Normal (100%)**, or **Comfortable (115%)**. Scales row heights, toolbar and F-key bar buttons, center copy/move column, tree/list padding, and related QSS spacing. Persisted as `ui_scale` in `settings.json`.
+
+### Changed
+
+- **Default layout** is tighter at Normal density: smaller table row padding, toolbar/F-key/center-panel controls, and sidebar tree item spacing.
+
+### Fixed
+
+- **Name column** no longer collapses to icons-only when `%APPDATA%` panel state has hidden Name, tiny widths, or over-locked columns; saved visibility/widths are sanitized on restore and Name gets a larger minimum share of the viewport.
+
+## [0.4.30] - 2026-06-02
+
+### Fixed
+
+- **Frozen (.exe) startup**: saved `window_geometry` in `%APPDATA%` is validated against connected screens; off-screen positions (e.g. after unplugging a monitor) are recentered instead of opening an invisible window. Locked column widths below 48 px in panel state are ignored so corrupt `%APPDATA%` state cannot collapse the file lists. PyInstaller builds set `QT_PLUGIN_PATH` for bundled Qt platform plugins.
+
+## [0.4.29] - 2026-06-02
+
+### Fixed
+
+- **Startup layout**: panel state no longer restores column widths below 48 px (corrupt values from saving before the window was laid out). After the first show, the main splitter and both file lists re-layout so columns and the sidebar use usable sizes again.
+
+## [0.4.28] - 2026-04-13
+
+### Fixed
+
+- **Sidebar splitter rewrite**: removed sidebar host wrapper widget, `showEvent` geometry sync, `setStretchFactor`, `setOpaqueResize`, and `setHandleWidth` overrides that accumulated and interfered with each other. The sidebar is now a plain `QTabWidget` directly inside a `QSplitter` with only `setCollapsible(0, False)` and a `minimumWidth` of 140 px. Saved widths are clamped to 140–600 px on restore. Splitter handle width is controlled only by the theme stylesheet (4 px).
+
+## [0.4.27] - 2026-04-13
+
+### Fixed
+
+- **Sidebar resize jank with locked columns**: `_onColumnSectionResized` now uses the same debounced path as viewport resize instead of calling `_normalizeColumnWidthsForViewport` immediately—this broke the debounce and caused a re-entrant feedback loop (`setColumnWidth` -> `sectionResized` -> normalize -> `setColumnWidth` -> …). All stretch-behavior and locked-width bookkeeping now runs inside the `blockSignals` / `_column_width_clamping` guard so no stray signals re-trigger layout during the update.
+
+## [0.4.26] - 2026-04-13
+
+### Fixed
+
+- **Bookmarks / Libraries sidebar splitter**: sidebar lives in a dedicated host widget with size policy, the splitter uses **opaque resize**, **stretch** (sidebar fixed weight, file area grows), **wider handle**, and a **one-shot geometry sync** after the first show so saved widths match the real window. Initial saved widths below ~180 px are bumped when restoring proportions. **File panels**: column width normalization is **coalesced (~33 ms)** on viewport resize to reduce jank while dragging the main splitter.
+
+## [0.4.25] - 2026-04-13
+
+### Fixed
+
+- **Main splitter**: only the **sidebar** pane is non-collapsible (`setCollapsible(0, false)`). Applying non-collapsible to **both** panes (or `setChildrenCollapsible(false)`) combined badly with the file area’s minimum size and made dragging the splitter feel stuck or unusable.
+- **File panels**: column width normalization on viewport resize is **immediate** again (removed the debounce timer), so lists track splitter and window resizes without lag.
+
+## [0.4.24] - 2026-04-13
+
+### Fixed
+
+- **Main splitter**: `setChildrenCollapsible(False)` and `setCollapsible` now run **after** panes are added so Qt does not leave new panes collapsible (which still reported as collapsible in diagnostics and could allow odd resize behavior).
+
+## [0.4.23] - 2026-04-13
+
+### Fixed
+
+- **Main sidebar splitter**: children are no longer collapsible (prevents the sidebar from snapping to zero width and fighting `minimumWidth`), the sidebar no longer uses a hard `maximumWidth` that conflicted with splitter sizing during drags, and the splitter handle is slightly wider for easier dragging.
+
+## [0.4.22] - 2026-04-13
+
+### Fixed
+
+- **Sidebar / splitter resize**: resizing the bookmarks (or Libraries) sidebar no longer fights column layout on every pixel; column widths are normalized shortly after the table viewport stops changing, so dragging the splitter stays smooth even with locked columns.
+
+### Changed
+
+- **Lock column width**: you can no longer lock every visible column—locking the last unlocked column shows a message, because at least one column must stay flexible when the window or sidebar resizes.
 
 ## [0.4.21] - 2026-04-07
 

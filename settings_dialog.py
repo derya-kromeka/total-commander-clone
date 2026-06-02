@@ -12,7 +12,10 @@ from PyQt5.QtWidgets import (
     QCheckBox,
     QComboBox,
     QSpinBox,
+    QLabel,
 )
+
+from theme import UI_SCALE_PRESETS, normalize_ui_scale, ui_scale_label
 
 
 class SettingsDialog(QDialog):
@@ -21,7 +24,7 @@ class SettingsDialog(QDialog):
         self._settings = settings_manager
         self.setWindowTitle("Settings")
         self.setModal(True)
-        self.resize(520, 340)
+        self.resize(520, 400)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -38,7 +41,21 @@ class SettingsDialog(QDialog):
         self._font_size = QSpinBox(self)
         self._font_size.setRange(8, 24)
         self._font_size.setValue(int(self._settings.getSetting("font_size", 10)))
-        form.addRow("Font size", self._font_size)
+        form.addRow("Font size (pt)", self._font_size)
+
+        self._ui_scale = QComboBox(self)
+        for pct in UI_SCALE_PRESETS:
+            self._ui_scale.addItem(ui_scale_label(pct), pct)
+        cur_scale = normalize_ui_scale(self._settings.getSetting("ui_scale", 100))
+        self._ui_scale.setCurrentIndex(max(0, self._ui_scale.findData(cur_scale)))
+        form.addRow("Interface density", self._ui_scale)
+        density_hint = QLabel(
+            "Controls row height, toolbar buttons, and spacing. "
+            "Extra compact / Very compact fit small screens; Comfortable for touch or large monitors.",
+            self,
+        )
+        density_hint.setWordWrap(True)
+        form.addRow("", density_hint)
 
         self._show_hidden = QCheckBox("Show hidden files", self)
         self._show_hidden.setChecked(self._settings.getSetting("show_hidden_files", False))
@@ -86,6 +103,7 @@ class SettingsDialog(QDialog):
         return {
             "theme_mode": self._theme_mode.currentData(),
             "font_size": self._font_size.value(),
+            "ui_scale": self._ui_scale.currentData(),
             "show_hidden_files": self._show_hidden.isChecked(),
             "confirm_delete": self._confirm_delete.isChecked(),
             "default_left_path": self._default_left_path.text().strip(),

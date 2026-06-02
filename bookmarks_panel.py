@@ -252,13 +252,13 @@ class BookmarksPanel(QWidget):
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(4)
-        self._btn_collapse_all = QPushButton("Collapse all")
+        self._btn_collapse_all = QPushButton("Collapse")
         self._btn_collapse_all.setObjectName("bookmarksToolButton")
         self._btn_collapse_all.setToolTip(
             "Collapse all\n\nClose every group in the bookmark tree."
         )
         self._btn_collapse_all.clicked.connect(self._collapseAll)
-        self._btn_expand_all = QPushButton("Expand all")
+        self._btn_expand_all = QPushButton("Expand")
         self._btn_expand_all.setObjectName("bookmarksToolButton")
         self._btn_expand_all.setToolTip(
             "Expand all\n\nOpen every group in the bookmark tree."

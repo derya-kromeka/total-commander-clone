@@ -32,6 +32,7 @@ DEFAULT_SETTINGS = {
     "sort_column": 0,
     "sort_order": "ascending",
     "font_size": 10,
+    "ui_scale": 100,
     "subfolders_warning_dismissed": False,
     # Mirror (Ctrl+Shift+M): which panel navigates to match the other.
     # "to_other" = inactive panel opens the active panel's folder (default).
