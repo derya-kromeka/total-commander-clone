@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QUrl, QTimer, QRect, QSize, QEvent
 from PyQt5.QtGui import QKeySequence, QDesktopServices, QIcon
 
-from file_panel import FilePanel
+from file_panel import FilePanel, DEFAULT_DATE_MODIFIED_FORMAT, resolve_date_modified_format_key
 from file_operations import copyFiles, moveFiles, deleteFiles, renameFile
 from batch_rename_dialog import BatchRenameDialog
 from bookmarks_panel import BookmarksPanel
@@ -682,6 +682,9 @@ class FileManagerApp(QMainWindow):
         self._left_panel.selectionChanged.connect(self._updateStatusBar)
         self._right_panel.selectionChanged.connect(self._updateStatusBar)
 
+        self._left_panel.dateModifiedFormatChanged.connect(self._onDateModifiedFormatChanged)
+        self._right_panel.dateModifiedFormatChanged.connect(self._onDateModifiedFormatChanged)
+
         self._left_panel.tableView().setContextMenuPolicy(Qt.CustomContextMenu)
         self._left_panel.tableView().customContextMenuRequested.connect(
             lambda pos: self._showContextMenu(self._left_panel, pos)
@@ -935,6 +938,12 @@ class FileManagerApp(QMainWindow):
         show_hidden = self._settings.getSetting("show_hidden_files", False)
         self._left_panel.setShowHidden(show_hidden)
         self._right_panel.setShowHidden(show_hidden)
+
+        date_fmt = resolve_date_modified_format_key(
+            self._settings.getSetting("date_modified_format", DEFAULT_DATE_MODIFIED_FORMAT)
+        )
+        self._left_panel.applyDateModifiedFormat(date_fmt, persist=False)
+        self._right_panel.applyDateModifiedFormat(date_fmt, persist=False)
 
         sidebar_state = self._settings.getSidebarState()
         current_tab = sidebar_state.get("current_tab", "bookmarks")
@@ -1665,6 +1674,8 @@ class FileManagerApp(QMainWindow):
         has_selection = len(entries) > 0
         single_selection = len(entries) == 1
 
+        file_entries = [e for e in entries if not e["is_dir"]]
+
         if single_selection:
             entry = entries[0]
             open_action = menu.addAction("Open")
@@ -1674,14 +1685,23 @@ class FileManagerApp(QMainWindow):
             )
             open_action.triggered.connect(lambda: self._onContextOpen(entry))
 
-            if not entry["is_dir"]:
-                open_with_action = menu.addAction("Open With...")
-                open_with_action.setToolTip(
-                    "Open with\n\n"
-                    "Choose another application to open this file (Windows “Open with” dialog)."
+        if file_entries:
+            open_with_action = menu.addAction("Open With...")
+            open_with_tip = (
+                "Open with\n\n"
+                "Choose another application to open this file (Windows “Open with” dialog)."
+            )
+            if len(file_entries) > 1:
+                open_with_tip += (
+                    "\n\nWhen several files are selected, the dialog opens for the "
+                    "first selected file."
                 )
-                open_with_action.triggered.connect(lambda: self._onOpenWith(entry))
+            open_with_action.setToolTip(open_with_tip)
+            open_with_action.triggered.connect(
+                lambda fe=list(file_entries): self._onOpenWith(fe)
+            )
 
+        if single_selection or file_entries:
             menu.addSeparator()
 
         if has_selection:
@@ -1813,12 +1833,30 @@ class FileManagerApp(QMainWindow):
         else:
             self._onFileOpen(entry)
 
-    def _onOpenWith(self, entry):
-        if platform.system() == "Windows":
-            try:
-                subprocess.Popen(["rundll32", "shell32.dll,OpenAs_RunDLL", entry["full_path"]])
-            except Exception as e:
-                QMessageBox.warning(self, "Error", str(e))
+    def _onDateModifiedFormatChanged(self, format_key):
+        sender = self.sender()
+        for panel in (self._left_panel, self._right_panel):
+            if panel is not sender:
+                panel.applyDateModifiedFormat(format_key, persist=False)
+
+    def _onOpenWith(self, entries):
+        if platform.system() != "Windows":
+            QMessageBox.information(
+                self,
+                "Open With",
+                "The “Open with” dialog is only available on Windows.",
+            )
+            return
+        if not entries:
+            return
+        path = os.path.normpath(os.path.abspath(entries[0]["full_path"]))
+        if not os.path.isfile(path):
+            QMessageBox.warning(self, "Open With", f"Not a file:\n{path}")
+            return
+        try:
+            subprocess.Popen(["rundll32", "shell32.dll,OpenAs_RunDLL", path])
+        except Exception as e:
+            QMessageBox.warning(self, "Open With", str(e))
 
     def _copyPathToClipboard(self, path):
         clipboard = QApplication.clipboard()

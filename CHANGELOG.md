@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.40] - 2026-06-08
+
+### Changed
+
+- **Filter nav bar**: Removed the separate **Clear** button; filter text is cleared with the built-in × inside the filter field. **Subfolders** is now a compact toggle button (highlighted when active) instead of a checkbox. Filter clear and subfolder toggle styling updated for the dark theme.
+
+## [0.4.39] - 2026-06-08
+
+### Added
+
+- **Date Modified format**: Right-click the **Date Modified** column header for a **Date format** submenu (YYYY/MM/DD, YY/MM/DD, with optional time, plus DD/MM/YYYY and MM/DD/YYYY variants). The current choice is checkmarked and saved in `settings.json` as `date_modified_format`.
+- **Open With**: File context menu **Open With...** launches the Windows **Open with** dialog via `rundll32 shell32.dll,OpenAs_RunDLL` (first selected file when multiple files are selected).
+
 ## [0.4.38] - 2026-06-03
 
 ### Fixed

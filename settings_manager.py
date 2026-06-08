@@ -38,6 +38,8 @@ DEFAULT_SETTINGS = {
     # "to_other" = inactive panel opens the active panel's folder (default).
     # "to_active" = active panel opens the inactive panel's folder.
     "mirror_mode": "to_other",
+    # Date Modified column strftime preset key (see file_panel.DATE_MODIFIED_FORMATS).
+    "date_modified_format": "yyyy_mm_dd_hm",
 }
 
 

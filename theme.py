@@ -369,6 +369,19 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
         max-height: {m['nav_bar_height']}px;
         padding: {m['nav_line_pad_v']}px {m['nav_filter_pad_right']}px {m['nav_line_pad_v']}px {m['nav_line_pad_h']}px;
     }}
+    QLineEdit#panelFilterEdit QToolButton {{
+        border: none;
+        background: transparent;
+        padding: 2px;
+        margin: 0 2px 0 0;
+        border-radius: 3px;
+    }}
+    QLineEdit#panelFilterEdit QToolButton:hover {{
+        background-color: {c['hover']};
+    }}
+    QLineEdit#panelFilterEdit QToolButton:pressed {{
+        background-color: {c['surface1']};
+    }}
 
     /* ====================================================== */
     /* Table View (File Listing)                               */
@@ -629,13 +642,26 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
         background-color: {c['active_border']};
         border-color: {c['active_border']};
     }}
-    QCheckBox#filterSubfoldersCheck {{
+    QPushButton#filterSubfoldersToggle {{
         font-size: {fs['small']}pt;
-        spacing: 4px;
+        padding: {m['nav_line_pad_v']}px {m['nav_line_pad_h']}px;
+        min-height: {m['nav_bar_height']}px;
+        max-height: {m['nav_bar_height']}px;
+        min-width: 0;
     }}
-    QCheckBox#filterSubfoldersCheck:checked {{
+    QPushButton#filterSubfoldersToggle:checked {{
+        background-color: {c['active_border']};
+        color: {c['crust']};
+        border-color: {c['active_border']};
         font-weight: bold;
-        color: {c['peach']};
+    }}
+    QPushButton#filterSubfoldersToggle:checked:hover {{
+        background-color: {c['blue']};
+        border-color: {c['blue']};
+    }}
+    QPushButton#filterSubfoldersToggle:checked:pressed {{
+        background-color: {c['button_press']};
+        border-color: {c['active_border']};
     }}
 
     /* ====================================================== */

@@ -22,6 +22,33 @@ from recursive_scan_worker import RecursiveScanThread
 # Pattern for splitting names into text vs digit runs (natural sort).
 _NATURAL_SORT_SPLIT = re.compile(r"(\d+)")
 
+# Date Modified column display formats: key -> (strftime pattern, menu label).
+DATE_MODIFIED_FORMATS = {
+    "yyyy_mm_dd": ("%Y/%m/%d", "YYYY/MM/DD"),
+    "yy_mm_dd": ("%y/%m/%d", "YY/MM/DD"),
+    "yyyy_mm_dd_hm": ("%Y/%m/%d %H:%M", "YYYY/MM/DD hh:mm"),
+    "yy_mm_dd_hm": ("%y/%m/%d %H:%M", "YY/MM/DD hh:mm"),
+    "dd_mm_yyyy": ("%d/%m/%Y", "DD/MM/YYYY"),
+    "dd_mm_yy": ("%d/%m/%y", "DD/MM/YY"),
+    "dd_mm_yyyy_hm": ("%d/%m/%Y %H:%M", "DD/MM/YYYY hh:mm"),
+    "mm_dd_yyyy": ("%m/%d/%Y", "MM/DD/YYYY"),
+}
+DEFAULT_DATE_MODIFIED_FORMAT = "yyyy_mm_dd_hm"
+
+
+def resolve_date_modified_format_key(key):
+    """Return a valid date_modified_format settings key."""
+    if key in DATE_MODIFIED_FORMATS:
+        return key
+    return DEFAULT_DATE_MODIFIED_FORMAT
+
+
+def format_date_modified(timestamp, format_key):
+    """Format a Unix timestamp for the Date Modified column."""
+    key = resolve_date_modified_format_key(format_key)
+    pattern = DATE_MODIFIED_FORMATS[key][0]
+    return datetime.fromtimestamp(timestamp).strftime(pattern)
+
 # ------------------------------------------------------------
 # Helper: natural_sort_key
 # Purpose: Sort key so embedded numbers compare numerically
@@ -351,6 +378,7 @@ class FileSystemModel(QAbstractTableModel):
         self._recursive = False
         self._icon_provider = QFileIconProvider()
         self._scan_generation = 0
+        self._date_modified_format_key = DEFAULT_DATE_MODIFIED_FORMAT
 
     # --------------------------------------------------------
     # Method: showHiddenFiles
@@ -386,6 +414,28 @@ class FileSystemModel(QAbstractTableModel):
 
     def isRecursive(self):
         return self._recursive
+
+    # --------------------------------------------------------
+    # Method: setDateModifiedFormatKey
+    # Purpose: Select strftime preset for the Date Modified column.
+    # --------------------------------------------------------
+    def setDateModifiedFormatKey(self, format_key):
+        key = resolve_date_modified_format_key(format_key)
+        if key == self._date_modified_format_key:
+            return
+        self._date_modified_format_key = key
+        self._refreshDateModifiedColumn()
+
+    def dateModifiedFormatKey(self):
+        return self._date_modified_format_key
+
+    def _refreshDateModifiedColumn(self):
+        if not self._entries:
+            return
+        col = 3
+        top_left = self.index(0, col)
+        bottom_right = self.index(len(self._entries) - 1, col)
+        self.dataChanged.emit(top_left, bottom_right, [Qt.DisplayRole])
 
     # --------------------------------------------------------
     # Method: setShowHidden
@@ -543,8 +593,9 @@ class FileSystemModel(QAbstractTableModel):
             elif col == 2:
                 return entry["type"]
             elif col == 3:
-                dt = datetime.fromtimestamp(entry["mod_time"])
-                return dt.strftime("%Y-%m-%d %H:%M")
+                return format_date_modified(
+                    entry["mod_time"], self._date_modified_format_key
+                )
 
         if role == Qt.DecorationRole and col == 0:
             file_info = QFileInfo(entry["full_path"])
@@ -1082,6 +1133,7 @@ class FilePanel(QWidget):
     selectionChanged = pyqtSignal()
     filesDropped = pyqtSignal(list, str, bool)
     activated = pyqtSignal()
+    dateModifiedFormatChanged = pyqtSignal(str)
 
     # --------------------------------------------------------
     # Method: __init__
@@ -1111,6 +1163,13 @@ class FilePanel(QWidget):
 
         self._initUI()
         self._connectSignals()
+        if self._settings_manager is not None:
+            fmt_key = resolve_date_modified_format_key(
+                self._settings_manager.getSetting(
+                    "date_modified_format", DEFAULT_DATE_MODIFIED_FORMAT
+                )
+            )
+            self._source_model.setDateModifiedFormatKey(fmt_key)
         self._path_edit.installEventFilter(self)
         self._filter_edit.installEventFilter(self)
         self._installActivationEventFilters()
@@ -1287,22 +1346,10 @@ class FilePanel(QWidget):
         self._filter_edit.setClearButtonEnabled(True)
         self._filter_edit.setToolTip(
             "Filter\n\n"
-            "Narrow the file list by name. Use the gear for full options "
-            "(match mode, files/folders, size, date, saved presets). "
-            "Use Subfolders to search below the current folder."
+            "Narrow the file list by name. Click the × on the right to clear the "
+            "filter text. Use the gear for full options (match mode, files/folders, "
+            "size, date, saved presets). Use Subfolders to search below the current folder."
         )
-
-        self._btn_filter_clear = QPushButton("Clear")
-        self._btn_filter_clear.setObjectName("navButton")
-        self._btn_filter_clear.setFixedHeight(NAV_BAR_HEIGHT)
-        self._btn_filter_clear.setMaximumWidth(72)
-        self._btn_filter_clear.setToolTip(
-            "Clear filter\n\n"
-            "Remove name filter, match mode, size/date rules, and subfolder search."
-        )
-        self._btn_filter_clear.setAutoDefault(False)
-        self._btn_filter_clear.setDefault(False)
-        self._btn_filter_clear.clicked.connect(self.clearFilter)
 
         self._btn_filter_options = QToolButton()
         self._btn_filter_options.setObjectName("navButton")
@@ -1349,16 +1396,19 @@ class FilePanel(QWidget):
         nav_layout.addWidget(self._btn_new_folder)
         nav_layout.addWidget(self._drive_container)
         nav_layout.addWidget(self._filter_edit, 1)
-        self._chk_filter_subfolders = QCheckBox("Subfolders")
-        self._chk_filter_subfolders.setObjectName("filterSubfoldersCheck")
-        self._chk_filter_subfolders.setToolTip(
+        self._btn_filter_subfolders = QPushButton("Subfolders")
+        self._btn_filter_subfolders.setObjectName("filterSubfoldersToggle")
+        self._btn_filter_subfolders.setCheckable(True)
+        self._btn_filter_subfolders.setFixedHeight(NAV_BAR_HEIGHT)
+        self._btn_filter_subfolders.setAutoDefault(False)
+        self._btn_filter_subfolders.setDefault(False)
+        self._btn_filter_subfolders.setToolTip(
             "Search subfolders\n\n"
-            "When checked, the list includes items in all subdirectories under the current "
+            "When active, the list includes items in all subdirectories under the current "
             "path. This can be slow in very large folder trees."
         )
-        self._chk_filter_subfolders.stateChanged.connect(self._onSubfoldersFilterToggled)
-        nav_layout.addWidget(self._chk_filter_subfolders, 0, Qt.AlignVCenter)
-        nav_layout.addWidget(self._btn_filter_clear, 0, Qt.AlignVCenter)
+        self._btn_filter_subfolders.toggled.connect(self._onSubfoldersFilterToggled)
+        nav_layout.addWidget(self._btn_filter_subfolders, 0, Qt.AlignVCenter)
         nav_layout.addWidget(self._btn_filter_options)
 
         layout.addLayout(nav_layout)
@@ -1417,7 +1467,7 @@ class FilePanel(QWidget):
         ):
             btn.setFixedSize(30, h)
             btn.setIconSize(icon_sz)
-        self._btn_filter_clear.setFixedHeight(h)
+        self._btn_filter_subfolders.setFixedHeight(h)
         self._drive_combo.setFixedSize(metrics["drive_combo_width"], h)
         self._drive_arrow.setFixedSize(14, h)
         self._drive_container.setFixedSize(metrics["drive_combo_width"] + 14, h)
@@ -1897,8 +1947,7 @@ class FilePanel(QWidget):
             self._btn_forward,
             self._btn_up,
             self._btn_home,
-            self._chk_filter_subfolders,
-            self._btn_filter_clear,
+            self._btn_filter_subfolders,
             self._btn_filter_options,
             self._btn_new_folder,
             self._drive_combo,
@@ -2208,16 +2257,16 @@ class FilePanel(QWidget):
             "filter_mode": self._proxy_model.filterMode(),
             "filter_kind": self._proxy_model.entryKindFilter(),
             "filter_text": self._filter_edit.text(),
-            "filter_include_subfolders": self._chk_filter_subfolders.isChecked(),
+            "filter_include_subfolders": self._btn_filter_subfolders.isChecked(),
             "filter_advanced": self._proxy_model.filterSpec().to_dict(),
         }
 
     def restoreHistoryData(self, data):
         self._history = data.get("history", [])
-        self._chk_filter_subfolders.blockSignals(True)
-        self._chk_filter_subfolders.setChecked(data.get("filter_include_subfolders", False))
-        self._chk_filter_subfolders.blockSignals(False)
-        self._source_model.setRecursive(self._chk_filter_subfolders.isChecked())
+        self._btn_filter_subfolders.blockSignals(True)
+        self._btn_filter_subfolders.setChecked(data.get("filter_include_subfolders", False))
+        self._btn_filter_subfolders.blockSignals(False)
+        self._source_model.setRecursive(self._btn_filter_subfolders.isChecked())
 
         current = data.get("current_path", "")
         if current and os.path.isdir(current):
@@ -2279,8 +2328,7 @@ class FilePanel(QWidget):
             self._btn_forward,
             self._btn_up,
             self._btn_home,
-            self._chk_filter_subfolders,
-            self._btn_filter_clear,
+            self._btn_filter_subfolders,
             self._btn_filter_options,
             self._btn_new_folder,
             self._drive_combo,
@@ -2419,6 +2467,21 @@ class FilePanel(QWidget):
             self.navigateTo(home)
 
     # --------------------------------------------------------
+    # Date Modified column format (settings.json)
+    # --------------------------------------------------------
+    def currentDateModifiedFormatKey(self):
+        return self._source_model.dateModifiedFormatKey()
+
+    def applyDateModifiedFormat(self, format_key, persist=False):
+        key = resolve_date_modified_format_key(format_key)
+        if persist and self._settings_manager is not None:
+            self._settings_manager.setSetting("date_modified_format", key)
+            self._settings_manager.saveSettings()
+        self._source_model.setDateModifiedFormatKey(key)
+        if persist:
+            self.dateModifiedFormatChanged.emit(key)
+
+    # --------------------------------------------------------
     # Column header context menu (show/hide columns)
     # --------------------------------------------------------
     def _onTableHeaderContextMenu(self, pos):
@@ -2450,6 +2513,27 @@ class FilePanel(QWidget):
                     lambda checked, col=idx: self._setColumnWidthLock(col, checked)
                 )
                 menu.addAction(act_lock)
+            if key == "date_modified":
+                menu.addSeparator()
+                fmt_menu = menu.addMenu("Date format")
+                fmt_menu.setToolTip(
+                    "Date format\n\n"
+                    "How dates appear in the Date Modified column. Saved in settings."
+                )
+                current_fmt = self.currentDateModifiedFormatKey()
+                fmt_group = QActionGroup(fmt_menu)
+                fmt_group.setExclusive(True)
+                for fmt_key, (_, label) in DATE_MODIFIED_FORMATS.items():
+                    act_fmt = QAction(label, fmt_menu)
+                    act_fmt.setCheckable(True)
+                    act_fmt.setChecked(fmt_key == current_fmt)
+                    fmt_group.addAction(act_fmt)
+                    act_fmt.triggered.connect(
+                        lambda checked, k=fmt_key: (
+                            self.applyDateModifiedFormat(k, persist=True) if checked else None
+                        )
+                    )
+                    fmt_menu.addAction(act_fmt)
                 menu.addSeparator()
         act_even = QAction("Distribute columns evenly", menu)
         act_even.setToolTip(
@@ -2525,7 +2609,7 @@ class FilePanel(QWidget):
             "filter_text": self._filter_edit.text(),
             "filter_mode": self._proxy_model.filterMode(),
             "filter_kind": self._proxy_model.entryKindFilter(),
-            "filter_include_subfolders": self._chk_filter_subfolders.isChecked(),
+            "filter_include_subfolders": self._btn_filter_subfolders.isChecked(),
             "filter_advanced": self._proxy_model.filterSpec().to_dict(),
         }
 
@@ -2547,9 +2631,9 @@ class FilePanel(QWidget):
             FilterSpec.from_dict(data.get("filter_advanced"))
         )
         sub = bool(data.get("filter_include_subfolders", False))
-        self._chk_filter_subfolders.blockSignals(True)
-        self._chk_filter_subfolders.setChecked(sub)
-        self._chk_filter_subfolders.blockSignals(False)
+        self._btn_filter_subfolders.blockSignals(True)
+        self._btn_filter_subfolders.setChecked(sub)
+        self._btn_filter_subfolders.blockSignals(False)
         self._source_model.setRecursive(sub)
         self._updateFilterPlaceholder()
 
@@ -2568,8 +2652,8 @@ class FilePanel(QWidget):
         dlg = FilterOptionsDialog(self, self._settings_manager, self)
         dlg.exec_()
 
-    def _onSubfoldersFilterToggled(self, state):
-        if state == Qt.Checked and self._settings_manager:
+    def _onSubfoldersFilterToggled(self, checked):
+        if checked and self._settings_manager:
             if not self._settings_manager.getSetting(
                 "subfolders_warning_dismissed", False
             ):
@@ -2592,11 +2676,11 @@ class FilePanel(QWidget):
                     )
                     self._settings_manager.saveSettings()
                 if r != QMessageBox.Ok:
-                    self._chk_filter_subfolders.blockSignals(True)
-                    self._chk_filter_subfolders.setChecked(False)
-                    self._chk_filter_subfolders.blockSignals(False)
+                    self._btn_filter_subfolders.blockSignals(True)
+                    self._btn_filter_subfolders.setChecked(False)
+                    self._btn_filter_subfolders.blockSignals(False)
                     return
-        self._source_model.setRecursive(self._chk_filter_subfolders.isChecked())
+        self._source_model.setRecursive(self._btn_filter_subfolders.isChecked())
         self._updateFilterPlaceholder()
 
     def _updateFilterPlaceholder(self):
@@ -2611,7 +2695,7 @@ class FilePanel(QWidget):
             hint.append("folders")
         elif kind == "files":
             hint.append("files")
-        if self._chk_filter_subfolders.isChecked():
+        if self._btn_filter_subfolders.isChecked():
             hint.append("subfolders")
         spec = self._proxy_model.filterSpec()
         if spec is not None and not spec.is_empty():
