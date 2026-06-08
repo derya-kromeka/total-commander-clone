@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.38] - 2026-06-03
+
+### Fixed
+
+- **Frozen (.exe) invisible window / blink**: saved panel paths and library drive scans no longer run synchronously before the first `show()`. The window opens on local home folders immediately; `%APPDATA%` state restore and library marker scans run on the next event-loop tick so slow or offline network paths (e.g. Google Drive) cannot block startup. Off-screen or minimized saved geometry is corrected on first show. Unhandled exceptions and startup steps are logged to `%APPDATA%\TotalCommanderClone\crash.log` and `startup.log`. PyInstaller builds also prepend bundled `Qt5\bin` to `PATH` for platform DLL loading.
+
+### Added
+
+- **Debug build**: `TotalCommanderClone-debug.spec` and `scripts\build.bat debug` produce a console `.exe` at `dist_build\TotalCommanderClone-debug\` for one-shot diagnosis.
+
 ## [0.4.37] - 2026-06-02
 
 ### Fixed

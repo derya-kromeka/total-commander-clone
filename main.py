@@ -6,6 +6,8 @@ Entry point for the application.
 import sys
 import os
 import ctypes
+import traceback
+from datetime import datetime
 
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
@@ -47,6 +49,9 @@ def configureFrozenQtEnvironment():
         platforms = os.path.join(plugins, "platforms")
         if os.path.isdir(platforms):
             os.environ.setdefault("QT_QPA_PLATFORM_PLUGIN_PATH", platforms)
+    qt_bin = os.path.join(meipass, "PyQt5", "Qt5", "bin")
+    if os.path.isdir(qt_bin):
+        os.environ["PATH"] = qt_bin + os.pathsep + os.environ.get("PATH", "")
 
 
 def getConfigPath():
@@ -57,6 +62,35 @@ def getConfigPath():
             base = os.path.join(os.path.expanduser("~"), ".config")
         return os.path.join(base, "TotalCommanderClone")
     return os.path.dirname(os.path.abspath(__file__))
+
+
+# ------------------------------------------------------------
+# Function: appendDiagnosticLog
+# Purpose: Append a line to a log file under the config folder.
+# ------------------------------------------------------------
+def appendDiagnosticLog(filename, message):
+    try:
+        log_dir = getConfigPath()
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, filename)
+        stamp = datetime.now().isoformat(timespec="seconds")
+        with open(log_path, "a", encoding="utf-8") as log_file:
+            log_file.write(f"[{stamp}] {message}\n")
+    except Exception:
+        pass
+
+
+# ------------------------------------------------------------
+# Function: installCrashLogging
+# Purpose: Log unhandled exceptions to %APPDATA%\TotalCommanderClone\crash.log
+# ------------------------------------------------------------
+def installCrashLogging():
+    def _excepthook(exc_type, exc, tb):
+        text = "".join(traceback.format_exception(exc_type, exc, tb))
+        appendDiagnosticLog("crash.log", f"Unhandled exception:\n{text}")
+        sys.__excepthook__(exc_type, exc, tb)
+
+    sys.excepthook = _excepthook
 
 
 # ------------------------------------------------------------
@@ -97,13 +131,21 @@ def resolveAppIconPath(base_path):
 #          applies the dark theme, and launches the main window.
 # ------------------------------------------------------------
 def main():
+    installCrashLogging()
     configureWindowsTaskbarIdentity()
     configureFrozenQtEnvironment()
+
+    frozen = getattr(sys, "frozen", False)
+    appendDiagnosticLog(
+        "startup.log",
+        f"Starting {APP_VERSION} frozen={frozen} argv={sys.argv!r}",
+    )
 
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(True)
     app.setApplicationName("Total Commander Clone")
     app.setApplicationVersion(APP_VERSION)
     app.setOrganizationName("TCClone")
@@ -112,7 +154,7 @@ def main():
 
     base_path = getBasePath()
     config_path = getConfigPath()
-    if getattr(sys, 'frozen', False) and not os.path.isdir(config_path):
+    if frozen and not os.path.isdir(config_path):
         os.makedirs(config_path, exist_ok=True)
     icon_path = resolveAppIconPath(base_path)
     if icon_path:
@@ -129,13 +171,23 @@ def main():
         ui_scale,
     )
 
-    window = FileManagerApp(settings_manager)
-    if icon_path:
-        window.setWindowIcon(QIcon(icon_path))
-    window.show()
+    try:
+        window = FileManagerApp(settings_manager)
+        if icon_path:
+            window.setWindowIcon(QIcon(icon_path))
+        window.show()
+        app.processEvents()
+        appendDiagnosticLog("startup.log", "Main window shown")
+    except Exception:
+        appendDiagnosticLog(
+            "crash.log",
+            f"Startup failed:\n{traceback.format_exc()}",
+        )
+        raise
 
     exit_code = app.exec_()
     settings_manager.saveAll()
+    appendDiagnosticLog("startup.log", f"Exit code {exit_code}")
     sys.exit(exit_code)
 
 

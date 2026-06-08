@@ -109,22 +109,87 @@ class FileManagerApp(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(self)
-        self._restoreState()
         self._applyUiMetrics()
         self._updateMirrorTooltips()
+        self._state_restore_done = False
         self._post_show_layout_done = False
+        self._show_home_path()
+
+    # --------------------------------------------------------
+    # Method: _show_home_path
+    # Purpose: Opens local home folders immediately so the window
+    #          is usable before deferred %APPDATA% state restore
+    #          (network paths and library scans can block for seconds).
+    # --------------------------------------------------------
+    def _show_home_path(self):
+        home = os.path.expanduser("~")
+        for panel in (self._left_panel, self._right_panel):
+            if not panel.currentPath():
+                panel.navigateTo(home, add_to_history=False)
 
     # --------------------------------------------------------
     # Method: showEvent
-    # Purpose: After the first show, re-layout splitter and columns
-    #          once the window has real geometry (restored widths may
-    #          have been saved while the viewport was still tiny).
+    # Purpose: Ensure the window is visible on-screen, then defer
+    #          saved state restore and post-show layout so startup
+    #          never blocks before the first paint.
     # --------------------------------------------------------
     def showEvent(self, event):
         super().showEvent(event)
+        self._ensureWindowVisibleOnStartup()
+        if not self._state_restore_done:
+            QTimer.singleShot(100, self._deferredRestoreStateAndLayout)
+
+    # --------------------------------------------------------
+    # Method: _ensureWindowVisibleOnStartup
+    # Purpose: Correct minimized, hidden, or off-screen geometry
+    #          saved in settings (common after monitor changes).
+    # --------------------------------------------------------
+    def _ensureWindowVisibleOnStartup(self):
+        if self.windowState() & Qt.WindowMinimized:
+            self.setWindowState(self.windowState() & ~Qt.WindowMinimized)
+        self.showNormal()
+
+        frame = self.frameGeometry()
+        app = QApplication.instance()
+        screens = app.screens() if app is not None else []
+        on_screen = (
+            any(frame.intersects(s.availableGeometry()) for s in screens)
+            if screens
+            else True
+        )
+        if (
+            not on_screen
+            or frame.width() < 100
+            or frame.height() < 100
+            or not self.isVisible()
+        ):
+            geo = sanitizeWindowGeometry({
+                "x": frame.x(),
+                "y": frame.y(),
+                "width": max(frame.width(), 800),
+                "height": max(frame.height(), 500),
+            })
+            self.setGeometry(
+                geo["x"], geo["y"], geo["width"], geo["height"],
+            )
+            self._settings.setSetting("window_geometry", geo)
+
+        self.raise_()
+        self.activateWindow()
+
+    # --------------------------------------------------------
+    # Method: _deferredRestoreStateAndLayout
+    # Purpose: Runs saved panel/library restore after the window
+    #          is on screen (avoids invisible-window startup hangs).
+    # --------------------------------------------------------
+    def _deferredRestoreStateAndLayout(self):
+        if self._state_restore_done:
+            return
+        self._state_restore_done = True
+        self._restoreState()
         if not self._post_show_layout_done:
             self._post_show_layout_done = True
-            QTimer.singleShot(0, self._runPostShowLayout)
+            self._runPostShowLayout()
 
     def _runPostShowLayout(self):
         sizes = self._main_splitter.sizes()
@@ -878,6 +943,14 @@ class FileManagerApp(QMainWindow):
         else:
             self._sidebar_tabs.setCurrentIndex(0)
 
+        QTimer.singleShot(200, self._deferredLibraryRefresh)
+
+    # --------------------------------------------------------
+    # Method: _deferredLibraryRefresh
+    # Purpose: Runs library marker scans after panel paths restore
+    #          so drive scans never block the first paint.
+    # --------------------------------------------------------
+    def _deferredLibraryRefresh(self):
         self._library_manager.refreshLibraries()
         self._reloadLibrariesPanel()
 

@@ -20,8 +20,17 @@ set "APP_EXE=TotalCommanderClone.exe"
 set "DIST_FINAL=dist\TotalCommanderClone"
 set "DIST_BUILD_ROOT=dist_build"
 set "DIST_STAGING=%DIST_BUILD_ROOT%\TotalCommanderClone"
+set "SPEC_FILE=TotalCommanderClone.spec"
 set "PYTHON_EXE="
 set "PYTHON_ARGS="
+
+if /I "%~1"=="debug" (
+    set "APP_EXE=TotalCommanderClone-debug.exe"
+    set "DIST_STAGING=%DIST_BUILD_ROOT%\TotalCommanderClone-debug"
+    set "SPEC_FILE=TotalCommanderClone-debug.spec"
+    set "BUILD_DEBUG=1"
+    echo [INFO] Debug console build selected.
+)
 
 if not exist "%SCRIPT%" (
     echo [ERROR] Could not find "%SCRIPT%" in:
@@ -66,9 +75,9 @@ call :stop_running_app
 
 call :try_clear_staging
 
-echo [INFO] Building standalone .exe (TotalCommanderClone.spec)...
+echo [INFO] Building standalone .exe (%SPEC_FILE%)...
 echo [INFO] Staging output: %DIST_STAGING%\
-%PYTHON_EXE% %PYTHON_ARGS% -m PyInstaller --noconfirm --clean --distpath "%DIST_BUILD_ROOT%" TotalCommanderClone.spec
+%PYTHON_EXE% %PYTHON_ARGS% -m PyInstaller --noconfirm --clean --distpath "%DIST_BUILD_ROOT%" %SPEC_FILE%
 
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Build failed.
@@ -142,6 +151,14 @@ REM ------------------------------------------------------------
 if not exist "%DIST_STAGING%\%APP_EXE%" (
     echo [ERROR] Expected output not found at %DIST_STAGING%\%APP_EXE%
     exit /b 1
+)
+
+if defined BUILD_DEBUG (
+    echo.
+    echo [INFO] Debug build complete. Output: %DIST_STAGING%\%APP_EXE%
+    echo [INFO] Console stderr is visible when run from a terminal.
+    echo [INFO] Logs: %%APPDATA%%\TotalCommanderClone\startup.log and crash.log
+    exit /b 0
 )
 
 if exist "%DIST_FINAL%" (
