@@ -19,7 +19,9 @@ from PyQt5.QtCore import Qt, QUrl, QTimer, QRect, QSize, QEvent
 from PyQt5.QtGui import QKeySequence, QDesktopServices, QIcon
 
 from file_panel import FilePanel, DEFAULT_DATE_MODIFIED_FORMAT, resolve_date_modified_format_key
-from file_operations import copyFiles, moveFiles, deleteFiles, renameFile
+from file_operations import renameFile
+from file_operation_queue import FileOperationQueue
+from transfers_bar import TransfersBar, TransfersDetailsDialog
 from batch_rename_dialog import BatchRenameDialog
 from bookmarks_panel import BookmarksPanel
 from libraries_panel import LibrariesPanel
@@ -104,6 +106,7 @@ class FileManagerApp(QMainWindow):
         self._initMenuBar()
         self._initToolBar()
         self._initPanels()
+        self._initTransfers()
         self._initBottomBar()
         self._initShortcuts()
         app = QApplication.instance()
@@ -800,6 +803,64 @@ class FileManagerApp(QMainWindow):
             )
 
     # --------------------------------------------------------
+    # Method: _initTransfers
+    # Purpose: Non-blocking file transfer queue with a compact
+    #          bottom row and optional details popup.
+    # --------------------------------------------------------
+    def _initTransfers(self):
+        self._transfer_queue = FileOperationQueue(self)
+        self._transfer_queue.setParentWindow(self)
+        self._transfers_details = None
+
+        self._transfers_bar = TransfersBar(self)
+        self._transfers_bar.cancelButton().clicked.connect(
+            self._transfer_queue.cancelActive
+        )
+        self._transfers_bar.detailsRequested.connect(self._showTransfersDetails)
+
+        self._transfer_queue.taskAdded.connect(self._onTransferTaskAdded)
+        self._transfer_queue.taskUpdated.connect(self._onTransferTaskUpdated)
+        self._transfer_queue.taskFinished.connect(self._onTransferTaskFinished)
+        self._transfer_queue.queueIdle.connect(self._onTransferQueueIdle)
+
+        self.centralWidget().layout().addWidget(self._transfers_bar)
+
+    def _showTransfersDetails(self):
+        if self._transfers_details is None:
+            self._transfers_details = TransfersDetailsDialog(
+                self._transfer_queue, self
+            )
+        else:
+            self._transfers_details._rebuildRows()
+        self._transfers_details.show()
+        self._transfers_details.raise_()
+        self._transfers_details.activateWindow()
+
+    def _onTransferTaskAdded(self, task):
+        self._transfers_bar.updateFromQueue(self._transfer_queue)
+        if self._transfers_details is not None and self._transfers_details.isVisible():
+            self._transfers_details.onTaskAdded(task)
+
+    def _onTransferTaskUpdated(self, task):
+        self._transfers_bar.updateFromQueue(self._transfer_queue)
+        if self._transfers_details is not None and self._transfers_details.isVisible():
+            self._transfers_details.onTaskUpdated(task)
+
+    def _onTransferTaskFinished(self, task, success, message):
+        self._transfers_bar.updateFromQueue(self._transfer_queue)
+        if self._transfers_details is not None and self._transfers_details.isVisible():
+            self._transfers_details.onTaskFinished(task, success, message)
+        self._refreshBothPanels()
+        self._showStatus(message)
+
+    def _onTransferQueueIdle(self):
+        self._transfers_bar.updateFromQueue(self._transfer_queue)
+
+    def _clearClipboard(self):
+        self._clipboard_paths = []
+        self._clipboard_mode = None
+
+    # --------------------------------------------------------
     # Method: _initBottomBar
     # Purpose: Creates the Total Commander-style bottom button
     #          bar with F-key shortcuts.
@@ -1009,9 +1070,8 @@ class FileManagerApp(QMainWindow):
             self._showStatus("No destination panel.")
             return
 
-        success, msg = copyFiles(paths, dest, self)
-        self._refreshBothPanels()
-        self._showStatus(msg)
+        self._transfer_queue.enqueueCopy(paths, dest)
+        self._showStatus(f"Copy queued ({len(paths)} item(s)).")
 
     def _onMoveToOther(self):
         if not self._active_panel:
@@ -1025,9 +1085,8 @@ class FileManagerApp(QMainWindow):
             self._showStatus("No destination panel.")
             return
 
-        success, msg = moveFiles(paths, dest, self)
-        self._refreshBothPanels()
-        self._showStatus(msg)
+        self._transfer_queue.enqueueMove(paths, dest)
+        self._showStatus(f"Move queued ({len(paths)} item(s)).")
 
     def _onDelete(self):
         if not self._active_panel or self._active_panel.isRenaming():
@@ -1038,9 +1097,23 @@ class FileManagerApp(QMainWindow):
             return
 
         confirm = self._settings.getSetting("confirm_delete", True)
-        success, msg = deleteFiles(paths, self, confirm=confirm)
-        self._refreshBothPanels()
-        self._showStatus(msg)
+        if confirm:
+            names = "\n".join(os.path.basename(p) for p in paths[:10])
+            if len(paths) > 10:
+                names += f"\n... and {len(paths) - 10} more"
+            reply = QMessageBox.question(
+                self,
+                "Confirm Delete",
+                f"Are you sure you want to delete {len(paths)} item(s)?\n\n{names}",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                self._showStatus("Delete cancelled.")
+                return
+
+        self._transfer_queue.enqueueDelete(paths)
+        self._showStatus(f"Delete queued ({len(paths)} item(s)).")
 
     def _onRename(self):
         if not self._active_panel:
@@ -1209,14 +1282,17 @@ class FileManagerApp(QMainWindow):
 
         os_paths, os_mode = self._pathsFromOsClipboard()
         if os_paths:
-            self._clipboard_paths = []
-            self._clipboard_mode = None
             if os_mode == "cut":
-                success, msg = moveFiles(os_paths, dest, self)
+                self._transfer_queue.enqueueMove(
+                    os_paths,
+                    dest,
+                    on_success=self._clearClipboard,
+                    clear_clipboard_on_success=True,
+                )
+                self._showStatus(f"Move queued ({len(os_paths)} item(s)).")
             else:
-                success, msg = copyFiles(os_paths, dest, self)
-            self._refreshBothPanels()
-            self._showStatus(msg)
+                self._transfer_queue.enqueueCopy(os_paths, dest)
+                self._showStatus(f"Copy queued ({len(os_paths)} item(s)).")
             return
 
         if not self._clipboard_paths:
@@ -1224,17 +1300,18 @@ class FileManagerApp(QMainWindow):
             return
 
         if self._clipboard_mode == "copy":
-            success, msg = copyFiles(self._clipboard_paths, dest, self)
+            self._transfer_queue.enqueueCopy(self._clipboard_paths, dest)
+            self._showStatus(f"Copy queued ({len(self._clipboard_paths)} item(s)).")
         elif self._clipboard_mode == "cut":
-            success, msg = moveFiles(self._clipboard_paths, dest, self)
-            if success:
-                self._clipboard_paths = []
-                self._clipboard_mode = None
+            self._transfer_queue.enqueueMove(
+                self._clipboard_paths,
+                dest,
+                on_success=self._clearClipboard,
+                clear_clipboard_on_success=True,
+            )
+            self._showStatus(f"Move queued ({len(self._clipboard_paths)} item(s)).")
         else:
             return
-
-        self._refreshBothPanels()
-        self._showStatus(msg)
 
     # --------------------------------------------------------
     # Method: _syncNativeFileClipboard
@@ -1901,11 +1978,11 @@ class FileManagerApp(QMainWindow):
     # --------------------------------------------------------
     def _onDroppedFiles(self, file_paths, drop_target, is_copy):
         if is_copy:
-            success, msg = copyFiles(file_paths, drop_target, self)
+            self._transfer_queue.enqueueCopy(file_paths, drop_target)
+            self._showStatus(f"Copy queued ({len(file_paths)} item(s)).")
         else:
-            success, msg = moveFiles(file_paths, drop_target, self)
-        self._refreshBothPanels()
-        self._showStatus(msg)
+            self._transfer_queue.enqueueMove(file_paths, drop_target)
+            self._showStatus(f"Move queued ({len(file_paths)} item(s)).")
 
     # --------------------------------------------------------
     # About Dialog

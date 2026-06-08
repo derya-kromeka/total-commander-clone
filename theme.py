@@ -742,6 +742,31 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     /* ====================================================== */
     /* Bottom Button Bar                                       */
     /* ====================================================== */
+    QFrame#transfersBar {{
+        background-color: {c['surface0']};
+        border-top: 1px solid {c['border']};
+    }}
+    QFrame#transfersBar QLabel#transfersSummary {{
+        color: {c['text']};
+        font-size: {fs['small']}pt;
+    }}
+    QFrame#transfersBar QProgressBar#transfersProgress {{
+        max-height: 14px;
+        min-height: 14px;
+    }}
+    QFrame#transfersBar QPushButton#transfersCancel {{
+        background-color: transparent;
+        border: 1px solid {c['border']};
+        border-radius: 4px;
+        padding: 2px 10px;
+        font-size: {fs['small']}pt;
+        color: {c['subtext1']};
+    }}
+    QFrame#transfersBar QPushButton#transfersCancel:hover {{
+        background-color: {c['button_hover']};
+        color: {c['text']};
+    }}
+
     QFrame#bottomBar {{
         background-color: {c['mantle']};
         border-top: 1px solid {c['border']};

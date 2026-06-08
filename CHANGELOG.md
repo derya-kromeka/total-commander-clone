@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.41] - 2026-06-08
+
+### Added
+
+- **Background file transfers**: Copy, move, and delete run in a non-blocking FIFO queue so the main window stays usable. A compact transfers row above the F-key bar shows active progress with Cancel; click the row to open a modeless details popup (safe to close — transfers continue). Multiple operations can be queued; cut/paste clears the clipboard only after a successful move.
+
 ## [0.4.40] - 2026-06-08
 
 ### Changed
