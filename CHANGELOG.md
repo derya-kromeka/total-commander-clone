@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.42] - 2026-06-18
+
+### Fixed
+
+- **In-place rename**: File name text no longer overlaps the rename field; the cell label is hidden while editing and the inline editor uses an opaque background aligned with the table row.
+
 ## [0.4.41] - 2026-06-08
 
 ### Added

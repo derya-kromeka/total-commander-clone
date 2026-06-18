@@ -382,6 +382,15 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     QLineEdit#panelFilterEdit QToolButton:pressed {{
         background-color: {c['surface1']};
     }}
+    QLineEdit#panelRenameEdit {{
+        background-color: {c['selection']};
+        color: {c['text']};
+        border: 1px solid {c['active_border']};
+        border-radius: 3px;
+        padding: {m['table_cell_pad_v']}px 2px;
+        margin: 0;
+        min-height: 0;
+    }}
 
     /* ====================================================== */
     /* Table View (File Listing)                               */

@@ -803,6 +803,20 @@ class FileTableItemDelegate(QStyledItemDelegate):
         else:
             option.textElideMode = Qt.ElideRight
 
+    def paint(self, painter, option, index):
+        view = self.parent()
+        renaming_row = getattr(view, "renamingRow", None)
+        if (
+            index.column() == 0
+            and callable(renaming_row)
+            and renaming_row() == index.row()
+        ):
+            self.initStyleOption(option, index)
+            option.text = ""
+            super().paint(painter, option, index)
+            return
+        super().paint(painter, option, index)
+
 
 # ============================================================
 # Class: FileTableView
@@ -838,6 +852,7 @@ class FileTableView(QTableView):
         self._scroll_timer.timeout.connect(self._onScrollTimeout)
 
         self._slow_click_row = -1
+        self._renaming_row = -1
         self._rename_timer = QTimer(self)
         self._rename_timer.setSingleShot(True)
         self._rename_timer.timeout.connect(self._onRenameTimerFired)
@@ -871,6 +886,23 @@ class FileTableView(QTableView):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.viewportResized.emit()
+
+    def renamingRow(self):
+        return self._renaming_row
+
+    def setRenamingRow(self, row):
+        if self._renaming_row == row:
+            return
+        old_row = self._renaming_row
+        self._renaming_row = row
+        model = self.model()
+        if model is None:
+            return
+        for r in (old_row, row):
+            if r >= 0:
+                idx = model.index(r, 0)
+                if idx.isValid():
+                    self.viewport().update(self.visualRect(idx))
 
     # --------------------------------------------------------
     # Slow-click-to-rename logic:
@@ -2141,7 +2173,11 @@ class FilePanel(QWidget):
         self._rename_old_name = entry["name"]
         self._rename_old_full_path = entry["full_path"]
 
+        self._table.setRenamingRow(proxy_index.row())
+
         self._rename_edit = _RenameLineEdit(self._table.viewport())
+        self._rename_edit.setObjectName("panelRenameEdit")
+        self._rename_edit.setAttribute(Qt.WA_StyledBackground, True)
         rect = self._table.visualRect(name_index)
         icon_offset = 28
         self._rename_edit.setGeometry(
@@ -2162,6 +2198,7 @@ class FilePanel(QWidget):
         self._rename_edit.focusLostSignal.connect(self._commitRename)
 
         self._rename_edit.setFocus()
+        self._rename_edit.raise_()
         self._rename_edit.show()
 
     # --------------------------------------------------------
@@ -2241,6 +2278,7 @@ class FilePanel(QWidget):
             self._rename_edit.hide()
             self._rename_edit.deleteLater()
             self._rename_edit = None
+        self._table.setRenamingRow(-1)
 
     # --------------------------------------------------------
     # History / State for Persistence
