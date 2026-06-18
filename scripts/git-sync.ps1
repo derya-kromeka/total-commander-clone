@@ -349,8 +349,8 @@ function Ensure-Remote {
     Write-Step "No Git remote configured"
     Write-Host @"
 Enter your repository URL. Examples:
-  https://github.com/your-org/sorting-line.git
-  github.com/your-org/sorting-line
+  https://github.com/your-org/your-repo.git
+  github.com/your-org/your-repo
 "@ -ForegroundColor DarkGray
 
     $inputUrl = Read-HostWithDefault -Prompt "Remote repository URL"
@@ -528,7 +528,7 @@ function Get-SuggestedCommitVersion {
 }
 
 function Get-DefaultCommitMessage {
-    param([string] $Summary = "Update sorting line")
+    param([string] $Summary = "Update")
     $ver = Get-SuggestedCommitVersion
     return ("v{0}: {1}" -f (Format-ProjectVersion $ver), $Summary)
 }
