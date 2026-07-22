@@ -109,8 +109,32 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import (
     QDrag, QDesktopServices, QIcon, QPixmap, QPainter, QColor, QKeySequence,
-    QFontMetrics,
+    QFontMetrics, QPen,
 )
+
+# Catppuccin Mocha red — clear-filter control (matches theme COLORS["red"]).
+_CLEAR_FILTER_ICON_COLOR = "#f38ba8"
+
+
+# ------------------------------------------------------------
+# Helper: _makeClearFilterIcon
+# Purpose: Red "X" icon for the filter clear action (visible when
+#          any name/kind/advanced/subfolders filter is active).
+# ------------------------------------------------------------
+def _makeClearFilterIcon(size=16):
+    pm = QPixmap(size, size)
+    pm.fill(Qt.transparent)
+    painter = QPainter(pm)
+    painter.setRenderHint(QPainter.Antialiasing)
+    pen = QPen(QColor(_CLEAR_FILTER_ICON_COLOR))
+    pen.setWidthF(max(2.0, size * 0.14))
+    pen.setCapStyle(Qt.RoundCap)
+    painter.setPen(pen)
+    margin = max(3, int(size * 0.22))
+    painter.drawLine(margin, margin, size - margin, size - margin)
+    painter.drawLine(size - margin, margin, margin, size - margin)
+    painter.end()
+    return QIcon(pm)
 
 
 # ------------------------------------------------------------
@@ -1431,13 +1455,28 @@ class FilePanel(QWidget):
         self._filter_edit.setMinimumWidth(120)
         self._filter_edit.setMinimumHeight(NAV_BAR_HEIGHT)
         self._filter_edit.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        self._filter_edit.setClearButtonEnabled(True)
+        # Custom red "X" (not Qt's text-only clear button) so advanced filters
+        # (files-only, exclude, extensions, size/date, Subfolders) are visible
+        # and clearable even when the include field is empty.
+        self._filter_edit.setClearButtonEnabled(False)
+        self._clear_filter_action = QAction(self)
+        self._clear_filter_action.setIcon(_makeClearFilterIcon())
+        self._clear_filter_action.setToolTip(
+            "Clear filter\n\n"
+            "Remove the active search for this panel: name text, files/folders "
+            "restriction, exclude/extensions, size/date rules, and Subfolders."
+        )
+        self._clear_filter_action.triggered.connect(self.clearFilter)
+        self._filter_edit.addAction(
+            self._clear_filter_action, QLineEdit.TrailingPosition
+        )
+        self._clear_filter_action.setVisible(False)
         self._filter_edit.setToolTip(
             "Filter\n\n"
             "Narrow the file list by name. Separate multiple words with spaces; "
             "use the gear for AND/OR, exclude terms, extensions, match mode, "
             "files/folders, size, date, and saved presets. Use Subfolders to search "
-            "below the current folder."
+            "below the current folder. A red X appears when any filter is active."
         )
 
         self._btn_filter_options = QToolButton()
@@ -2749,6 +2788,7 @@ class FilePanel(QWidget):
         self._btn_filter_subfolders.blockSignals(False)
         self._source_model.setRecursive(sub)
         self._updateFilterPlaceholder()
+        self._updateStatusLabel()
 
     def clearFilter(self):
         self.applyFilterState({
@@ -2798,6 +2838,40 @@ class FilePanel(QWidget):
                     return
         self._source_model.setRecursive(self._btn_filter_subfolders.isChecked())
         self._updateFilterPlaceholder()
+        self._updateStatusLabel()
+
+    # --------------------------------------------------------
+    # Method: _hasActiveFilter
+    # Purpose: True when any filter setting differs from the
+    #          default (empty name, all kinds, no advanced rules).
+    # --------------------------------------------------------
+    def _hasActiveFilter(self):
+        if (self._filter_edit.text() or "").strip():
+            return True
+        if (self._proxy_model.filterExcludeText() or "").strip():
+            return True
+        if (self._proxy_model.filterExtensionsText() or "").strip():
+            return True
+        if self._proxy_model.filterMode() != "contains":
+            return True
+        if self._proxy_model.entryKindFilter() != "all":
+            return True
+        if self._btn_filter_subfolders.isChecked():
+            return True
+        spec = self._proxy_model.filterSpec()
+        if spec is not None and not spec.is_empty():
+            return True
+        return False
+
+    # --------------------------------------------------------
+    # Method: _updateClearFilterAction
+    # Purpose: Show the red X only while a filter/search is on.
+    # --------------------------------------------------------
+    def _updateClearFilterAction(self):
+        action = getattr(self, "_clear_filter_action", None)
+        if action is None:
+            return
+        action.setVisible(self._hasActiveFilter())
 
     def _updateFilterPlaceholder(self):
         hint = []
@@ -2827,9 +2901,12 @@ class FilePanel(QWidget):
             hint.append("size/date")
         extra = (" · " + ", ".join(hint)) if hint else ""
         self._filter_edit.setPlaceholderText(f"\U0001F50D Filter{extra}…")
+        self._updateClearFilterAction()
 
     def _onFilterChanged(self, text):
         self._proxy_model.setFilterText(text)
+        self._updateFilterPlaceholder()
+        self._updateStatusLabel()
 
     def _onItemDoubleClicked(self, proxy_index):
         source_index = self._proxy_model.mapToSource(proxy_index)
@@ -2865,6 +2942,10 @@ class FilePanel(QWidget):
         )
         files = total - dirs
         text = f"{files} file(s), {dirs} folder(s)"
+        if self._hasActiveFilter():
+            shown = self._proxy_model.rowCount()
+            if shown != total:
+                text = f"{shown} shown · {text}"
         if self._source_model.isRecursive():
             text += "  ·  Subfolders scan"
         self._status_label.setText(text)

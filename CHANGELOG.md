@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.48] - 2026-07-22
+
+### Added
+
+- **Context menu: Open / Explorer / Terminal**: Right-click a file or folder (including Subfolders search results) for **Open File** (or **Open** for folders), **Open in File Explorer** (reveals/selects the item), and **Open Folder in Terminal** (Command Prompt or Windows Terminal in the item’s folder). Right-click also selects the row under the cursor when needed.
+
+## [0.4.47] - 2026-07-22
+
+### Added
+
+- **Clear active filter (red X)**: When any panel filter is active (name text, files/folders only, exclude/extensions, size/date, or Subfolders), a red **X** appears in the filter field. Click it to reset all search/filter options for that panel. The status bar also shows how many items remain visible when a filter hides rows (e.g. `0 shown · 0 file(s), 2 folder(s)`).
+
+## [0.4.46] - 2026-07-22
+
+### Added
+
+- **Settings Import / Export**: In **Edit → Settings**, export or import a single JSON profile that includes preferences plus bookmarks, libraries, folder tags, saved filters, and panel state. Import applies immediately and refreshes the UI.
+
 ## [0.4.45] - 2026-07-22
 
 ### Added

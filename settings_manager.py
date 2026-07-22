@@ -8,8 +8,28 @@ and schedules a best-effort git upload of those files.
 
 import json
 import os
+from datetime import datetime, timezone
 
 from config_backup import backupConfigAndUpload
+from app_version import APP_VERSION
+
+
+# ------------------------------------------------------------
+# Profile bundle (single-file import/export)
+# ------------------------------------------------------------
+PROFILE_FORMAT = "total-commander-clone-profile"
+PROFILE_FORMAT_VERSION = 1
+PROFILE_STATE_KEYS = (
+    "bookmarks",
+    "libraries",
+    "folder_tags",
+    "saved_library_filters",
+    "saved_file_filters",
+    "sidebar_state",
+    "recent_paths",
+    "left_panel",
+    "right_panel",
+)
 
 
 # ------------------------------------------------------------
@@ -338,6 +358,100 @@ class SettingsManager:
         self._writeJson(self._settings_path, self._settings)
         self._writeJson(self._state_path, self._state)
         self._backupConfigToRepo()
+
+    # --------------------------------------------------------
+    # Method: buildProfileBundle
+    # Purpose: Build a single-file dict with settings + bookmarks,
+    #          libraries, panel state, filters, etc.
+    # Input:  settings_override (dict|None) - optional settings
+    #         snapshot (e.g. unsaved dialog values).
+    # --------------------------------------------------------
+    def buildProfileBundle(self, settings_override=None):
+        settings = dict(self._settings)
+        if settings_override:
+            settings.update(settings_override)
+        state = {}
+        for key in PROFILE_STATE_KEYS:
+            if key in self._state:
+                state[key] = self._state[key]
+        return {
+            "format": PROFILE_FORMAT,
+            "format_version": PROFILE_FORMAT_VERSION,
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "app_version": APP_VERSION,
+            "settings": settings,
+            "state": state,
+        }
+
+    # --------------------------------------------------------
+    # Method: exportProfile
+    # Purpose: Write a portable profile JSON (settings + state).
+    # --------------------------------------------------------
+    def exportProfile(self, path, settings_override=None):
+        bundle = self.buildProfileBundle(settings_override=settings_override)
+        self._writeJson(path, bundle)
+        return path
+
+    # --------------------------------------------------------
+    # Method: importProfile
+    # Purpose: Load a profile JSON and apply settings + state keys.
+    # Output: dict summary {settings_count, state_keys}
+    # --------------------------------------------------------
+    def importProfile(self, path):
+        if not path or not os.path.isfile(path):
+            raise FileNotFoundError(f"Profile file not found: {path}")
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("Profile file must be a JSON object.")
+
+        settings = data.get("settings")
+        state = data.get("state")
+
+        # Accept loose layouts: top-level settings-like keys, or our backup split files merged by user.
+        if settings is None and state is None:
+            if any(k in data for k in ("theme_mode", "font_size", "show_hidden_files")):
+                settings = {
+                    k: v
+                    for k, v in data.items()
+                    if k not in ("format", "format_version", "exported_at", "app_version", "state", "bookmarks", "libraries")
+                }
+            if "bookmarks" in data or "libraries" in data:
+                state = {
+                    k: data[k]
+                    for k in PROFILE_STATE_KEYS
+                    if k in data
+                }
+
+        if not isinstance(settings, dict) and not isinstance(state, dict):
+            raise ValueError(
+                "Unrecognized profile file. Expected a Total Commander Clone "
+                "export with 'settings' and/or 'state'."
+            )
+
+        applied_settings = 0
+        if isinstance(settings, dict):
+            self._settings = self._deepMerge(DEFAULT_SETTINGS, settings)
+            applied_settings = len(settings)
+
+        applied_state_keys = []
+        if isinstance(state, dict):
+            for key in PROFILE_STATE_KEYS:
+                if key not in state:
+                    continue
+                value = state[key]
+                if key in ("left_panel", "right_panel", "sidebar_state", "folder_tags") and isinstance(value, dict):
+                    defaults = DEFAULT_STATE.get(key, {})
+                    self._state[key] = self._deepMerge(defaults, value) if isinstance(defaults, dict) else value
+                else:
+                    self._state[key] = value
+                applied_state_keys.append(key)
+
+        self.saveAll()
+        return {
+            "settings_count": applied_settings,
+            "state_keys": applied_state_keys,
+        }
 
     # --------------------------------------------------------
     # Method: _backupConfigToRepo

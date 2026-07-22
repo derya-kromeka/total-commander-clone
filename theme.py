@@ -377,10 +377,10 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
         border-radius: 3px;
     }}
     QLineEdit#panelFilterEdit QToolButton:hover {{
-        background-color: {c['hover']};
+        background-color: rgba(243, 139, 168, 0.22);
     }}
     QLineEdit#panelFilterEdit QToolButton:pressed {{
-        background-color: {c['surface1']};
+        background-color: rgba(243, 139, 168, 0.35);
     }}
     QLineEdit#panelRenameEdit {{
         background-color: {c['selection']};

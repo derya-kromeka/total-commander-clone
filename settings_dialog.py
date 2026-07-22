@@ -1,11 +1,12 @@
 """
 Settings dialog: theme, font, file display, delete confirmation, default pane paths.
-Based on patterns from https://github.com/denizko-gh/total-commander-clone-1 (fork).
+Includes Import / Export of a single profile file (settings + bookmarks + libraries).
 """
 
 from PyQt5.QtWidgets import (
     QDialog,
     QVBoxLayout,
+    QHBoxLayout,
     QFormLayout,
     QLineEdit,
     QDialogButtonBox,
@@ -13,18 +14,26 @@ from PyQt5.QtWidgets import (
     QComboBox,
     QSpinBox,
     QLabel,
+    QPushButton,
+    QFileDialog,
+    QMessageBox,
+    QGroupBox,
 )
+from PyQt5.QtCore import pyqtSignal
 
 from theme import UI_SCALE_PRESETS, normalize_ui_scale, ui_scale_label
 
 
 class SettingsDialog(QDialog):
+    # Emitted after a profile file is successfully imported and saved.
+    profileImported = pyqtSignal()
+
     def __init__(self, settings_manager, parent=None):
         super().__init__(parent)
         self._settings = settings_manager
         self.setWindowTitle("Settings")
         self.setModal(True)
-        self.resize(520, 400)
+        self.resize(560, 480)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -34,20 +43,15 @@ class SettingsDialog(QDialog):
         self._theme_mode.addItem("Dark", "dark")
         self._theme_mode.addItem("Light", "light")
         self._theme_mode.addItem("Same as system", "system")
-        current_theme = self._settings.getSetting("theme_mode", "dark")
-        self._theme_mode.setCurrentIndex(max(0, self._theme_mode.findData(current_theme)))
         form.addRow("Theme", self._theme_mode)
 
         self._font_size = QSpinBox(self)
         self._font_size.setRange(8, 24)
-        self._font_size.setValue(int(self._settings.getSetting("font_size", 10)))
         form.addRow("Font size (pt)", self._font_size)
 
         self._ui_scale = QComboBox(self)
         for pct in UI_SCALE_PRESETS:
             self._ui_scale.addItem(ui_scale_label(pct), pct)
-        cur_scale = normalize_ui_scale(self._settings.getSetting("ui_scale", 100))
-        self._ui_scale.setCurrentIndex(max(0, self._ui_scale.findData(cur_scale)))
         form.addRow("Interface density", self._ui_scale)
         density_hint = QLabel(
             "Controls row height, toolbar buttons, and spacing. "
@@ -58,21 +62,15 @@ class SettingsDialog(QDialog):
         form.addRow("", density_hint)
 
         self._show_hidden = QCheckBox("Show hidden files", self)
-        self._show_hidden.setChecked(self._settings.getSetting("show_hidden_files", False))
         form.addRow("Files", self._show_hidden)
 
         self._confirm_delete = QCheckBox("Ask before deleting files", self)
-        self._confirm_delete.setChecked(self._settings.getSetting("confirm_delete", True))
         form.addRow("Delete", self._confirm_delete)
 
-        self._default_left_path = QLineEdit(
-            self._settings.getSetting("default_left_path", ""), self
-        )
+        self._default_left_path = QLineEdit(self)
         form.addRow("Default left path", self._default_left_path)
 
-        self._default_right_path = QLineEdit(
-            self._settings.getSetting("default_right_path", ""), self
-        )
+        self._default_right_path = QLineEdit(self)
         form.addRow("Default right path", self._default_right_path)
 
         self._mirror_mode = QComboBox(self)
@@ -84,13 +82,35 @@ class SettingsDialog(QDialog):
             "Active panel follows inactive (open inactive’s folder in the active pane)",
             "to_active",
         )
-        cur_mirror = self._settings.getSetting("mirror_mode", "to_other")
-        self._mirror_mode.setCurrentIndex(
-            max(0, self._mirror_mode.findData(cur_mirror))
-        )
         form.addRow("Mirror (Ctrl+Shift+M)", self._mirror_mode)
 
         layout.addLayout(form)
+
+        profile_box = QGroupBox("Profile (settings, bookmarks, libraries)", self)
+        profile_layout = QVBoxLayout(profile_box)
+        profile_hint = QLabel(
+            "Export saves one file with preferences, bookmarks, libraries, tags, "
+            "and saved filters. Import replaces those from a previously exported file.",
+            self,
+        )
+        profile_hint.setWordWrap(True)
+        profile_layout.addWidget(profile_hint)
+        profile_buttons = QHBoxLayout()
+        self._btn_export = QPushButton("Export…", self)
+        self._btn_import = QPushButton("Import…", self)
+        self._btn_export.setToolTip(
+            "Save settings, bookmarks, libraries, and related data to a single JSON file."
+        )
+        self._btn_import.setToolTip(
+            "Load settings, bookmarks, libraries, and related data from a profile JSON file."
+        )
+        self._btn_export.clicked.connect(self._onExportProfile)
+        self._btn_import.clicked.connect(self._onImportProfile)
+        profile_buttons.addWidget(self._btn_export)
+        profile_buttons.addWidget(self._btn_import)
+        profile_buttons.addStretch()
+        profile_layout.addLayout(profile_buttons)
+        layout.addWidget(profile_box)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self
@@ -98,6 +118,25 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+        self._loadFromSettings()
+
+    # --------------------------------------------------------
+    # Method: _loadFromSettings
+    # Purpose: Fill form controls from the settings manager.
+    # --------------------------------------------------------
+    def _loadFromSettings(self):
+        current_theme = self._settings.getSetting("theme_mode", "dark")
+        self._theme_mode.setCurrentIndex(max(0, self._theme_mode.findData(current_theme)))
+        self._font_size.setValue(int(self._settings.getSetting("font_size", 10)))
+        cur_scale = normalize_ui_scale(self._settings.getSetting("ui_scale", 100))
+        self._ui_scale.setCurrentIndex(max(0, self._ui_scale.findData(cur_scale)))
+        self._show_hidden.setChecked(self._settings.getSetting("show_hidden_files", False))
+        self._confirm_delete.setChecked(self._settings.getSetting("confirm_delete", True))
+        self._default_left_path.setText(self._settings.getSetting("default_left_path", "") or "")
+        self._default_right_path.setText(self._settings.getSetting("default_right_path", "") or "")
+        cur_mirror = self._settings.getSetting("mirror_mode", "to_other")
+        self._mirror_mode.setCurrentIndex(max(0, self._mirror_mode.findData(cur_mirror)))
 
     def values(self):
         return {
@@ -110,3 +149,68 @@ class SettingsDialog(QDialog):
             "default_right_path": self._default_right_path.text().strip(),
             "mirror_mode": self._mirror_mode.currentData(),
         }
+
+    # --------------------------------------------------------
+    # Method: _onExportProfile
+    # Purpose: Save settings + bookmarks/libraries to one JSON file.
+    # --------------------------------------------------------
+    def _onExportProfile(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export profile",
+            "total-commander-clone-profile.json",
+            "Profile JSON (*.json);;All files (*.*)",
+        )
+        if not path:
+            return
+        try:
+            self._settings.exportProfile(path, settings_override=self.values())
+        except Exception as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        QMessageBox.information(
+            self,
+            "Export complete",
+            f"Profile saved to:\n{path}\n\n"
+            "Includes settings, bookmarks, libraries, tags, and saved filters.",
+        )
+
+    # --------------------------------------------------------
+    # Method: _onImportProfile
+    # Purpose: Load a profile JSON and apply it immediately.
+    # --------------------------------------------------------
+    def _onImportProfile(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import profile",
+            "",
+            "Profile JSON (*.json);;All files (*.*)",
+        )
+        if not path:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Import profile",
+            "Importing will replace current settings, bookmarks, libraries, "
+            "tags, and saved filters with the file contents.\n\nContinue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            summary = self._settings.importProfile(path)
+        except Exception as exc:
+            QMessageBox.warning(self, "Import failed", str(exc))
+            return
+
+        self._loadFromSettings()
+        self.profileImported.emit()
+        keys = ", ".join(summary.get("state_keys") or []) or "(none)"
+        QMessageBox.information(
+            self,
+            "Import complete",
+            f"Loaded profile from:\n{path}\n\n"
+            f"Settings keys applied: {summary.get('settings_count', 0)}\n"
+            f"State sections: {keys}",
+        )

@@ -5,6 +5,7 @@ right-click context menus, keyboard shortcuts, and bookmarks.
 """
 
 import os
+import shutil
 import subprocess
 import platform
 
@@ -1345,6 +1346,7 @@ class FileManagerApp(QMainWindow):
 
     def _onOpenSettings(self):
         dialog = SettingsDialog(self._settings, self)
+        dialog.profileImported.connect(self._onSettingsProfileImported)
         if dialog.exec_() != QDialog.Accepted:
             return
 
@@ -1352,6 +1354,16 @@ class FileManagerApp(QMainWindow):
         for key, value in values.items():
             self._settings.setSetting(key, value)
 
+        self._applySettingsValues(values)
+        self._settings.saveSettings()
+        self._updateMirrorTooltips()
+        self._showStatus("Settings saved.")
+
+    # --------------------------------------------------------
+    # Method: _applySettingsValues
+    # Purpose: Apply theme/density/hidden-files from a values dict.
+    # --------------------------------------------------------
+    def _applySettingsValues(self, values):
         self._action_show_hidden.setChecked(values["show_hidden_files"])
         self._left_panel.setShowHidden(values["show_hidden_files"])
         self._right_panel.setShowHidden(values["show_hidden_files"])
@@ -1367,9 +1379,29 @@ class FileManagerApp(QMainWindow):
         self._left_panel.relayoutColumns()
         self._right_panel.relayoutColumns()
 
-        self._settings.saveSettings()
+    # --------------------------------------------------------
+    # Method: _onSettingsProfileImported
+    # Purpose: Refresh UI after Import from the Settings dialog.
+    # --------------------------------------------------------
+    def _onSettingsProfileImported(self):
+        values = {
+            "theme_mode": self._settings.getSetting("theme_mode", "dark"),
+            "font_size": int(self._settings.getSetting("font_size", 10)),
+            "ui_scale": self._settings.getSetting("ui_scale", 100),
+            "show_hidden_files": self._settings.getSetting("show_hidden_files", False),
+        }
+        self._applySettingsValues(values)
+        self._bookmarks_panel.loadStructure()
+        self._rebuildBookmarksMenu()
+        self._reloadLibrariesPanel()
+        for side in ("left", "right"):
+            panel = self._left_panel if side == "left" else self._right_panel
+            panel_state = self._settings.getPanelState(side)
+            if isinstance(panel_state, dict):
+                panel.applyFilterState(panel_state)
+                panel.restoreHistoryData(panel_state)
         self._updateMirrorTooltips()
-        self._showStatus("Settings saved.")
+        self._showStatus("Profile imported.")
 
     # --------------------------------------------------------
     # Bookmarks
@@ -1745,6 +1777,13 @@ class FileManagerApp(QMainWindow):
         table = panel.tableView()
         index = table.indexAt(pos)
 
+        # Right-click on a row selects it when it is not already part of
+        # the selection (so Open / Explorer / Terminal target that item).
+        if index.isValid():
+            sm = table.selectionModel()
+            if sm is not None and not sm.isSelected(index):
+                table.selectRow(index.row())
+
         menu = QMenu(self)
 
         entries = panel.selectedEntries()
@@ -1755,12 +1794,41 @@ class FileManagerApp(QMainWindow):
 
         if single_selection:
             entry = entries[0]
-            open_action = menu.addAction("Open")
-            open_action.setToolTip(
-                "Open\n\n"
-                "Open the folder in this panel or launch the file with its default app."
-            )
+            if entry["is_dir"]:
+                open_label = "Open"
+                open_tip = (
+                    "Open\n\n"
+                    "Open this folder in the current panel."
+                )
+            else:
+                open_label = "Open File"
+                open_tip = (
+                    "Open file\n\n"
+                    "Open this file with its default application."
+                )
+            open_action = menu.addAction(open_label)
+            open_action.setToolTip(open_tip)
             open_action.triggered.connect(lambda: self._onContextOpen(entry))
+
+            reveal_action = menu.addAction("Open in File Explorer")
+            reveal_action.setToolTip(
+                "Open in File Explorer\n\n"
+                "Show this item in the system file manager "
+                "(selects the file or folder in Explorer)."
+            )
+            reveal_action.triggered.connect(
+                lambda e=entry: self._onRevealInFileExplorer(e)
+            )
+
+            terminal_action = menu.addAction("Open Folder in Terminal")
+            terminal_action.setToolTip(
+                "Open folder in Terminal\n\n"
+                "Open a Command Prompt / terminal window in the folder "
+                "that contains this item (or in the folder itself)."
+            )
+            terminal_action.triggered.connect(
+                lambda e=entry: self._onOpenFolderInTerminal(e)
+            )
 
         if file_entries:
             open_with_action = menu.addAction("Open With...")
@@ -1909,6 +1977,106 @@ class FileManagerApp(QMainWindow):
             self._active_panel.navigateTo(entry["full_path"])
         else:
             self._onFileOpen(entry)
+
+    # --------------------------------------------------------
+    # Method: _onRevealInFileExplorer
+    # Purpose: Show the selected file or folder in the OS file
+    #          manager (Explorer “/select”, Finder “-R”, etc.).
+    # --------------------------------------------------------
+    def _onRevealInFileExplorer(self, entry):
+        path = entry.get("full_path") or ""
+        if not path or not os.path.exists(path):
+            QMessageBox.warning(
+                self,
+                "Open in File Explorer",
+                "The selected item no longer exists.",
+            )
+            return
+        path = os.path.normpath(path)
+        try:
+            system = platform.system()
+            if system == "Windows":
+                # /select, highlights the item; works for files and folders.
+                subprocess.Popen(
+                    f'explorer /select,"{path}"',
+                    shell=True,
+                )
+            elif system == "Darwin":
+                subprocess.Popen(["open", "-R", path])
+            else:
+                folder = path if entry.get("is_dir") else os.path.dirname(path)
+                if folder and os.path.isdir(folder):
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
+                else:
+                    raise OSError(f"Folder not found: {folder}")
+            self._showStatus(f"Opened in File Explorer: {path}")
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Open in File Explorer",
+                f"Could not open in the file explorer:\n{e}",
+            )
+
+    # --------------------------------------------------------
+    # Method: _onOpenFolderInTerminal
+    # Purpose: Open a terminal / Command Prompt in the item’s
+    #          folder (parent for files, the folder itself for dirs).
+    # --------------------------------------------------------
+    def _onOpenFolderInTerminal(self, entry):
+        path = entry.get("full_path") or ""
+        if entry.get("is_dir"):
+            folder = path
+        else:
+            folder = os.path.dirname(path) if path else ""
+        folder = os.path.normpath(folder) if folder else ""
+        if not folder or not os.path.isdir(folder):
+            QMessageBox.warning(
+                self,
+                "Open Folder in Terminal",
+                "Could not resolve a folder for this item.",
+            )
+            return
+        try:
+            system = platform.system()
+            if system == "Windows":
+                wt = shutil.which("wt")
+                if wt:
+                    subprocess.Popen([wt, "-d", folder])
+                else:
+                    # CREATE_NEW_CONSOLE so cmd opens in its own window.
+                    creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+                    subprocess.Popen(
+                        ["cmd.exe", "/K", f'cd /d "{folder}"'],
+                        creationflags=creationflags,
+                    )
+            elif system == "Darwin":
+                subprocess.Popen(["open", "-a", "Terminal", folder])
+            else:
+                launched = False
+                for cmd in (
+                    ["x-terminal-emulator", f"--working-directory={folder}"],
+                    ["gnome-terminal", f"--working-directory={folder}"],
+                    ["konsole", "--workdir", folder],
+                    ["xfce4-terminal", f"--working-directory={folder}"],
+                ):
+                    exe = shutil.which(cmd[0])
+                    if exe:
+                        subprocess.Popen([exe] + cmd[1:])
+                        launched = True
+                        break
+                if not launched:
+                    raise OSError(
+                        "No supported terminal found "
+                        "(tried x-terminal-emulator, gnome-terminal, "
+                        "konsole, xfce4-terminal)."
+                    )
+            self._showStatus(f"Opened terminal in: {folder}")
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Open Folder in Terminal",
+                f"Could not open a terminal:\n{e}",
+            )
 
     def _onDateModifiedFormatChanged(self, format_key):
         sender = self.sender()
