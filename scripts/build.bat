@@ -9,7 +9,9 @@ REM Project root: parent of this scripts\ folder (portable; no absolute paths).
 REM
 REM Builds to dist_build\ first so a locked dist\TotalCommanderClone does not
 REM block rebuilds. On success, promotes to dist\ when the old folder is removable.
-REM If dist\ is locked after build, prompts to delete and complete the swap.
+REM If dist\ is locked after build: stop the app, retry delete, then failsafe-merge
+REM (robocopy staging over dist, leaving locked files in place) so the taskbar
+REM shortcut path keeps working. Only prompts interactively if merge also fails.
 REM
 REM Before building, compares APP_VERSION to the remote and pushes or pulls as needed
 REM (scripts\git-sync.ps1 -Action BuildSync). Pass skip-git to skip that step.
@@ -180,7 +182,7 @@ exit /b 0
 REM ------------------------------------------------------------
 REM Subroutine: promote_build_output
 REM Purpose: Move staging build into dist\ when the old folder is removable.
-REM          If dist\ is locked, offer an interactive delete-and-swap.
+REM          If dist\ is locked, retry after stopping the app, then failsafe-merge.
 REM ------------------------------------------------------------
 :promote_build_output
 if not exist "%DIST_STAGING%\%APP_EXE%" (
@@ -203,8 +205,12 @@ if exist "%DIST_FINAL%" (
 
 call :complete_promote_swap
 if errorlevel 1 (
-    echo [WARN] Could not move staging into dist\. Output remains at %DIST_STAGING%\%APP_EXE%
-    exit /b 0
+    echo [WARN] Could not move staging into dist\. Trying merge failsafe...
+    call :merge_promote_into_dist
+    if errorlevel 1 (
+        echo [WARN] Merge failsafe failed. Output remains at %DIST_STAGING%\%APP_EXE%
+        exit /b 0
+    )
 )
 exit /b 0
 
@@ -253,18 +259,69 @@ echo [INFO] Settings are stored in %%APPDATA%%\TotalCommanderClone (persists acr
 exit /b 0
 
 REM ------------------------------------------------------------
+REM Subroutine: merge_promote_into_dist
+REM Purpose: Failsafe when dist\ cannot be deleted (locked DLLs, Explorer, etc.).
+REM          Copy staging over dist\ with robocopy; leave locked files in place.
+REM          Succeeds if %DIST_FINAL%\%APP_EXE% exists afterward.
+REM Exit 0 on success, 1 on failure.
+REM ------------------------------------------------------------
+:merge_promote_into_dist
+echo [INFO] Failsafe: merging new build into %DIST_FINAL%\ (keeping locked files)...
+if not exist "dist" mkdir "dist"
+if not exist "%DIST_FINAL%" mkdir "%DIST_FINAL%"
+
+robocopy "%DIST_STAGING%" "%DIST_FINAL%" /E /COPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS /NP >nul
+set "MERGE_RC=%ERRORLEVEL%"
+
+if not exist "%DIST_FINAL%\%APP_EXE%" (
+    echo [ERROR] Failsafe merge did not produce %DIST_FINAL%\%APP_EXE%
+    exit /b 1
+)
+
+REM robocopy: 0-7 = OK-ish; bit 8 (8+) = some files failed; 16+ = serious error
+if %MERGE_RC% GEQ 16 (
+    echo [ERROR] Failsafe merge failed (robocopy exit %MERGE_RC%).
+    exit /b 1
+)
+
+if %MERGE_RC% GEQ 8 (
+    echo [WARN] Some files under %DIST_FINAL% were locked and could not be overwritten.
+    echo         Left existing copies in place. Verified %APP_EXE% is present for the shortcut.
+)
+
+REM Best-effort cleanup of staging (may fail if something still holds it)
+rmdir /s /q "%DIST_STAGING%" 2>nul
+rmdir "%DIST_BUILD_ROOT%" 2>nul
+
+echo.
+echo [INFO] Build complete. Output: %DIST_FINAL%\%APP_EXE%
+echo [INFO] Settings are stored in %%APPDATA%%\TotalCommanderClone (persists across rebuilds).
+exit /b 0
+
+REM ------------------------------------------------------------
 REM Subroutine: promote_build_output_locked
-REM Purpose: Build succeeded but dist\ is locked; offer delete-and-swap.
+REM Purpose: dist\ locked after build; stop app, retry delete, then merge failsafe.
+REM          Prompt only if automatic recovery fails.
 REM ------------------------------------------------------------
 :promote_build_output_locked
 echo.
 echo [INFO] Build OK at %DIST_STAGING%\%APP_EXE%
-echo [WARN] Could not replace "%DIST_FINAL%" - files are locked.
+echo [WARN] Could not fully replace "%DIST_FINAL%" - some files are locked.
 
 call :stop_running_app
 
+call :remove_dist_final 6
+if not errorlevel 1 (
+    call :complete_promote_swap
+    if not errorlevel 1 exit /b 0
+)
+
+echo [INFO] Delete still blocked - using merge failsafe...
+call :merge_promote_into_dist
+if not errorlevel 1 exit /b 0
+
 set "CONFIRM="
-set /p "CONFIRM=dist\TotalCommanderClone is locked. Delete it and switch to the new build? [Y/N] "
+set /p "CONFIRM=Automatic promote failed. Retry delete of dist\TotalCommanderClone? [Y/N] "
 if /I not "%CONFIRM%"=="Y" goto :promote_build_output_locked_decline
 
 echo [INFO] Removing locked %DIST_FINAL%\ ...
@@ -272,22 +329,25 @@ call :remove_dist_final 10
 if errorlevel 1 goto :promote_build_output_locked_still_locked
 
 call :complete_promote_swap
-if errorlevel 1 goto :promote_build_output_locked_still_locked
+if errorlevel 1 (
+    call :merge_promote_into_dist
+    if errorlevel 1 goto :promote_build_output_locked_still_locked
+)
 exit /b 0
 
 :promote_build_output_locked_still_locked
 echo.
 call :print_dist_lock_hints
-echo [ERROR] Could not delete "%DIST_FINAL%". New build remains at %DIST_STAGING%\%APP_EXE%
+echo [ERROR] Could not promote into "%DIST_FINAL%". New build remains at %DIST_STAGING%\%APP_EXE%
 exit /b 1
 
 :promote_build_output_locked_decline
 echo.
-echo [INFO] Keeping existing dist\ build. Run the new build from:
+echo [INFO] Keeping current dist\ state. Run the new build from:
 echo         %DIST_STAGING%\%APP_EXE%
-echo [INFO] To switch dist\ to this build later, close locks on dist\ and run
-echo         scripts\build.bat again (confirm Y when prompted), or delete
-echo         "%DIST_FINAL%" manually and move dist_build\TotalCommanderClone into dist\.
+echo [INFO] To finish later: close apps locking files under dist\, then run
+echo         scripts\build.bat again (or delete "%DIST_FINAL%" and move
+echo         dist_build\TotalCommanderClone into dist\).
 echo [INFO] Settings are stored in %%APPDATA%%\TotalCommanderClone (persists across rebuilds).
 exit /b 0
 
@@ -303,5 +363,6 @@ if not errorlevel 1 (
 )
 echo         - File Explorer with dist\ or TotalCommanderClone open
 echo         - A terminal whose current directory is under dist\
+echo         - Another app that loaded DLLs from dist\_internal (e.g. VCRUNTIME*.dll)
 echo         Close those, then run scripts\build.bat again.
 exit /b 0

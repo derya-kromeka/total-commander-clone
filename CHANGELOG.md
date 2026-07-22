@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.50] - 2026-07-22
+
+### Fixed
+
+- **Build promote failsafe**: If `dist\TotalCommanderClone` cannot be deleted because some files are locked (e.g. `VCRUNTIME*.dll` held by another process), `scripts\build.bat` merges the new build over `dist\` instead of failing. The taskbar shortcut path keeps working; locked files that cannot be overwritten are left in place when the new exe is present.
+
 ## [0.4.49] - 2026-07-22
 
 ### Changed

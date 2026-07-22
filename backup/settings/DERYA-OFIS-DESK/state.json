@@ -1034,12 +1034,25 @@
             "I:\\Shared drives\\90 - ENTOMAK APP\\live-app",
             "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Database_Backups"
         ],
+        "column_widths": {
+            "name": 437,
+            "size": 86,
+            "type": 70,
+            "date_modified": 124
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1055,20 +1068,7 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 437,
-            "size": 86,
-            "type": 70,
-            "date_modified": 124
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     },
     "right_panel": {
         "current_path": "C:\\Users\\Derya",
@@ -1820,15 +1820,28 @@
             "I:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Database_Backups",
             "C:\\Users\\Derya"
         ],
+        "column_widths": {
+            "name": 575,
+            "size": 100,
+            "type": 100,
+            "date_modified": 124
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
-        "filter_text": "te",
+        "filter_text": "",
         "filter_exclude_text": "",
         "filter_extensions": "",
         "filter_words_combine_and": true,
@@ -1841,19 +1854,6 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 575,
-            "size": 100,
-            "type": 100,
-            "date_modified": 124
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     }
 }
