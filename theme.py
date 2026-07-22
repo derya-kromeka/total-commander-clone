@@ -11,6 +11,7 @@ from PyQt5.QtGui import QFont
 # UI scale (Settings → Interface density)
 # ------------------------------------------------------------
 DEFAULT_UI_SCALE_PERCENT = 100
+DEFAULT_FONT_SIZE_PT = 10  # baseline = 100% layout scale
 UI_SCALE_PRESETS = (70, 75, 85, 100, 115)
 
 _UI_SCALE_LABELS = {
@@ -81,11 +82,19 @@ def step_ui_scale(current, direction):
 def getUiMetrics(font_size_pt, ui_scale_percent=DEFAULT_UI_SCALE_PERCENT):
     """
     Pixel metrics for layout widgets and QSS (padding, min-heights).
-    font_size_pt comes from Settings; ui_scale_percent is a density preset percent.
-    Floors keep path bar, rows, and sidebar tabs usable at 70%.
+
+    Layout scales with both:
+      - font_size_pt relative to DEFAULT_FONT_SIZE_PT (10 = 100%)
+      - ui_scale_percent density preset (100 = Normal)
+
+    So raising Font size grows row heights, icons, and controls with the text —
+    not only the glyphs — keeping the file list readable.
+    Floors keep path bar, rows, and sidebar tabs usable at small sizes.
     """
-    scale = normalize_ui_scale(ui_scale_percent) / 100.0
+    density = normalize_ui_scale(ui_scale_percent) / 100.0
     b = max(8, min(24, int(font_size_pt)))
+    font_factor = b / float(DEFAULT_FONT_SIZE_PT)
+    scale = density * font_factor
 
     def px(base, minimum=1):
         return max(minimum, int(round(base * scale)))
@@ -93,9 +102,13 @@ def getUiMetrics(font_size_pt, ui_scale_percent=DEFAULT_UI_SCALE_PERCENT):
     return {
         "ui_scale_percent": normalize_ui_scale(ui_scale_percent),
         "font_size_pt": b,
+        "font_scale_percent": int(round(font_factor * 100)),
+        "layout_scale": scale,
         "nav_bar_height": px(26, 18),
         "nav_icon_size": px(16, 11),
+        "nav_button_width": px(30, 22),
         "table_row_height": px(22, 16),
+        "table_icon_size": px(16, 12),
         "toolbar_icon": px(18, 14),
         "bottom_bar_height": px(30, 22),
         "center_panel_width": px(44, 36),
@@ -123,6 +136,7 @@ def getUiMetrics(font_size_pt, ui_scale_percent=DEFAULT_UI_SCALE_PERCENT):
         "path_edit_pad_v": px(3, 2),
         "path_edit_pad_h": px(10, 6),
         "sidebar_tab_min_width": px(92, 72),
+        "scrollbar_thickness": px(10, 8),
     }
 
 
@@ -473,14 +487,14 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     /* ====================================================== */
     QScrollBar:vertical {{
         background: {c['scrollbar_bg']};
-        width: 10px;
+        width: {m['scrollbar_thickness']}px;
         margin: 0;
-        border-radius: 5px;
+        border-radius: {max(4, m['scrollbar_thickness'] // 2)}px;
     }}
     QScrollBar::handle:vertical {{
         background: {c['scrollbar_handle']};
         min-height: 30px;
-        border-radius: 5px;
+        border-radius: {max(4, m['scrollbar_thickness'] // 2)}px;
     }}
     QScrollBar::handle:vertical:hover {{
         background: {c['scrollbar_hover']};
@@ -495,14 +509,14 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     }}
     QScrollBar:horizontal {{
         background: {c['scrollbar_bg']};
-        height: 10px;
+        height: {m['scrollbar_thickness']}px;
         margin: 0;
-        border-radius: 5px;
+        border-radius: {max(4, m['scrollbar_thickness'] // 2)}px;
     }}
     QScrollBar::handle:horizontal {{
         background: {c['scrollbar_handle']};
         min-width: 30px;
-        border-radius: 5px;
+        border-radius: {max(4, m['scrollbar_thickness'] // 2)}px;
     }}
     QScrollBar::handle:horizontal:hover {{
         background: {c['scrollbar_hover']};
@@ -992,6 +1006,7 @@ def applyTheme(app, theme_mode, font_size_pt=None, ui_scale_percent=None):
     themes match Settings on startup.
 
     ui_scale_percent: density preset percent — spacing and control sizes (see getUiMetrics).
+    Layout metrics also scale with font_size_pt (10 pt = 100%).
     """
     from PyQt5.QtWidgets import QStyleFactory
 

@@ -47,15 +47,28 @@ class SettingsDialog(QDialog):
 
         self._font_size = QSpinBox(self)
         self._font_size.setRange(8, 24)
-        form.addRow("Font size (pt)", self._font_size)
+        self._font_size.setSuffix(" pt")
+        self._font_size.setToolTip(
+            "Text and layout scale together.\n"
+            "10 pt = 100% (default). Larger sizes grow row height, icons, and controls."
+        )
+        form.addRow("Font size (10 = 100%)", self._font_size)
+        font_hint = QLabel(
+            "Scales text with row height, file-list icons, and control sizes so "
+            "filenames stay readable. 10 pt is the default (100%).",
+            self,
+        )
+        font_hint.setWordWrap(True)
+        form.addRow("", font_hint)
 
         self._ui_scale = QComboBox(self)
         for pct in UI_SCALE_PRESETS:
             self._ui_scale.addItem(ui_scale_label(pct), pct)
         form.addRow("Interface density", self._ui_scale)
         density_hint = QLabel(
-            "Controls row height, toolbar buttons, and spacing. "
-            "Extra compact / Very compact fit small screens; Comfortable for touch or large monitors.",
+            "Extra spacing tweak on top of font size. "
+            "Extra compact / Very compact fit small screens; Comfortable for touch or large monitors. "
+            "Ctrl+mouse wheel also steps density.",
             self,
         )
         density_hint.setWordWrap(True)

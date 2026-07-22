@@ -1588,9 +1588,9 @@ class FilePanel(QWidget):
         h = metrics["nav_bar_height"]
         icon = metrics["nav_icon_size"]
         icon_sz = QSize(icon, icon)
+        btn_w = metrics.get("nav_button_width", 30)
 
         self._path_edit.setMinimumHeight(max(h, metrics.get("path_edit_height", h)))
-        self._refreshHeaderSectionMinimums()
         for btn in (
             self._btn_copy_path,
             self._btn_paste_path,
@@ -1602,21 +1602,28 @@ class FilePanel(QWidget):
             self._btn_new_folder,
             self._btn_filter_options,
         ):
-            btn.setFixedSize(30, h)
+            btn.setFixedSize(btn_w, h)
             btn.setIconSize(icon_sz)
         self._btn_clear_filter.setFixedHeight(h)
         self._btn_filter_subfolders.setFixedHeight(h)
         self._drive_combo.setFixedSize(metrics["drive_combo_width"], h)
-        self._drive_arrow.setFixedSize(14, h)
-        self._drive_container.setFixedSize(metrics["drive_combo_width"] + 14, h)
+        arrow_w = max(12, int(round(btn_w * 14 / 30)))
+        self._drive_arrow.setFixedSize(arrow_w, h)
+        self._drive_container.setFixedSize(metrics["drive_combo_width"] + arrow_w, h)
         self._filter_edit.setFixedHeight(h)
         if getattr(self, "_drive_line_edit", None) is not None:
             self._drive_line_edit.setAlignment(Qt.AlignVCenter | Qt.AlignHCenter)
         self._filter_edit.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
 
         vh = self._table.verticalHeader()
-        vh.setDefaultSectionSize(metrics["table_row_height"])
-        vh.setMinimumSectionSize(max(16, metrics["table_row_height"] - 4))
+        row_h = metrics["table_row_height"]
+        vh.setDefaultSectionSize(row_h)
+        vh.setMinimumSectionSize(max(16, row_h - 4))
+
+        table_icon = metrics.get("table_icon_size", 16)
+        self._table.setIconSize(QSize(table_icon, table_icon))
+        self._layout_scale = float(metrics.get("layout_scale", 1.0))
+        self._refreshHeaderSectionMinimums()
 
     # --------------------------------------------------------
     # Column width persistence (all columns; state.json per panel).
@@ -1643,7 +1650,8 @@ class FilePanel(QWidget):
         """Pixel minimums so headers (Size, Type, Date Modified) are not clipped."""
         hdr = self._table.horizontalHeader()
         fm = hdr.fontMetrics()
-        pad = 18
+        scale = getattr(self, "_layout_scale", 1.0)
+        pad = max(12, int(round(18 * scale)))
         self._header_section_mins = []
         for label in FileSystemModel.COLUMNS:
             self._header_section_mins.append(fm.horizontalAdvance(label) + pad)
@@ -1657,7 +1665,9 @@ class FilePanel(QWidget):
             if col < len(self._header_section_mins)
             else 24
         )
-        cfg_min = self.COLUMN_MIN_PIXELS.get(key, 24) if key else 24
+        scale = getattr(self, "_layout_scale", 1.0)
+        cfg_base = self.COLUMN_MIN_PIXELS.get(key, 24) if key else 24
+        cfg_min = max(24, int(round(cfg_base * scale)))
         floor = max(header_min, cfg_min, 24)
         if col == 0 and vw is not None:
             pct = max(1, int(round(vw * self.NAME_COLUMN_VIEWPORT_MIN_FRACTION)))
@@ -1942,7 +1952,7 @@ class FilePanel(QWidget):
             if date_col in visible:
                 date_cap = max(
                     self._minWidthForColumn(date_col, vw),
-                    self.DATE_COLUMN_MAX_WIDTH,
+                    int(round(self.DATE_COLUMN_MAX_WIDTH * getattr(self, "_layout_scale", 1.0))),
                 )
                 if w[date_col] > date_cap:
                     extra += w[date_col] - date_cap

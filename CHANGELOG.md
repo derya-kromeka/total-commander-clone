@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.52] - 2026-07-22
+
+### Changed
+
+- **Font size scales layout**: Raising **Font size** in Settings no longer only enlarges text. Row height, file-list icons, nav buttons, padding, and related spacing scale from a **10 pt = 100%** baseline (with Interface density still applied on top), so the file list stays readable instead of cramped.
+
+## [0.4.51] - 2026-07-22
+
+### Added
+
+- **Bookmarks context menu**: Right-click a bookmark for **Edit bookmark…** (name and path dialog with folder/file browse) and **Update with current panel** (repoint the bookmark to the active pane’s path). Rename and Delete remain available.
+
 ## [0.4.50] - 2026-07-22
 
 ### Fixed

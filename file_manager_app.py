@@ -617,6 +617,7 @@ class FileManagerApp(QMainWindow):
         file_panes_widget.setLayout(panels_layout)
 
         self._bookmarks_panel = BookmarksPanel(self._settings, self)
+        self._bookmarks_panel.setCurrentPathProvider(self._getActivePanelPath)
         self._bookmarks_panel.bookmarkActivated.connect(self._onBookmarkPanelActivated)
         self._bookmarks_panel.structureChanged.connect(self._onBookmarksStructureChanged)
         self._bookmarks_panel.addCurrentFolderRequested.connect(self._onAddBookmark)
@@ -1406,6 +1407,11 @@ class FileManagerApp(QMainWindow):
     # --------------------------------------------------------
     # Bookmarks
     # --------------------------------------------------------
+    def _getActivePanelPath(self):
+        if self._active_panel:
+            return self._active_panel.currentPath()
+        return ""
+
     def _onAddBookmark(self):
         if not self._active_panel:
             return

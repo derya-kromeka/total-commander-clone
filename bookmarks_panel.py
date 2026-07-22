@@ -1,7 +1,7 @@
 """
 Total Commander Clone - Bookmarks Panel
 Resizable sidebar with bookmarks and groups: drag-drop reorder,
-create group on drop, context menu (rename/delete), tooltips with full path.
+create group on drop, context menu (edit/update/rename/delete), tooltips with full path.
 """
 
 import os
@@ -9,12 +9,14 @@ import os
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem, QLabel,
     QMenu, QInputDialog, QMessageBox, QApplication, QHeaderView,
-    QHBoxLayout, QPushButton,
+    QHBoxLayout, QPushButton, QDialog,
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QUrl
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent, QIcon
 from PyQt5.QtWidgets import QStyle
 from PyQt5.QtGui import QDesktopServices
+
+from bookmark_dialogs import BookmarkEditDialog
 
 
 # Data roles for tree items
@@ -233,7 +235,7 @@ class BookmarksTreeWidget(QTreeWidget):
 # ------------------------------------------------------------
 # Class: BookmarksPanel
 # Purpose: Left sidebar with title and tree; loads/saves structure,
-#          emits bookmarkActivated(path) on click; context menu for rename/delete.
+#          emits bookmarkActivated(path) on click; context menu for edit/update/rename/delete.
 # ------------------------------------------------------------
 class BookmarksPanel(QWidget):
 
@@ -244,6 +246,7 @@ class BookmarksPanel(QWidget):
     def __init__(self, settings_manager, parent=None):
         super().__init__(parent)
         self._settings = settings_manager
+        self._current_path_provider = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         title = QLabel("Bookmarks")
@@ -322,6 +325,11 @@ class BookmarksPanel(QWidget):
                 del_act = menu.addAction("Delete group")
                 del_act.triggered.connect(lambda: self._deleteGroup(item))
             else:
+                edit_act = menu.addAction("Edit bookmark...")
+                edit_act.triggered.connect(lambda: self._editBookmark(item))
+                update_act = menu.addAction("Update with current panel")
+                update_act.triggered.connect(lambda: self._updateBookmarkWithCurrentPanel(item))
+                menu.addSeparator()
                 rename_act = menu.addAction("Rename bookmark")
                 rename_act.triggered.connect(lambda: self._renameBookmark(item))
                 menu.addSeparator()
@@ -332,6 +340,49 @@ class BookmarksPanel(QWidget):
             add_act.triggered.connect(self.addCurrentFolderRequested.emit)
         if menu.actions():
             menu.exec_(self._tree.mapToGlobal(pos))
+
+    def setCurrentPathProvider(self, provider):
+        """Set a callable that returns the active panel path (for update-with-panel)."""
+        self._current_path_provider = provider
+
+    def _applyBookmarkData(self, item, name, path):
+        item.setText(0, name)
+        item.setData(0, ROLE_PATH, path)
+        item.setToolTip(0, path)
+        is_file = path and os.path.isfile(path)
+        icon = QApplication.instance().style().standardIcon(
+            QStyle.SP_FileIcon if is_file else QStyle.SP_DirIcon
+        )
+        item.setIcon(0, icon)
+
+    def _editBookmark(self, item):
+        path = item.data(0, ROLE_PATH) or ""
+        dialog = BookmarkEditDialog(item.text(0), path, self)
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        values = dialog.values()
+        if not values["name"] or not values["path"]:
+            QMessageBox.warning(self, "Edit Bookmark", "Name and path are required.")
+            return
+        self._applyBookmarkData(item, values["name"], values["path"])
+        self._emitStructureChanged()
+
+    def _updateBookmarkWithCurrentPanel(self, item):
+        if not self._current_path_provider:
+            QMessageBox.warning(
+                self, "Update Bookmark",
+                "No active panel is available."
+            )
+            return
+        path = self._current_path_provider()
+        if not path:
+            QMessageBox.warning(
+                self, "Update Bookmark",
+                "The active panel does not have a current path."
+            )
+            return
+        self._applyBookmarkData(item, item.text(0), path)
+        self._emitStructureChanged()
 
     def _renameGroup(self, item):
         name, ok = QInputDialog.getText(self, "Rename Group", "Group name:", text=item.text(0))
