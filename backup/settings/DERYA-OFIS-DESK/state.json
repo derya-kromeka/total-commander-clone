@@ -152,7 +152,7 @@
     },
     "recent_paths": [],
     "left_panel": {
-        "current_path": "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts",
+        "current_path": "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Database_Backups",
         "history": [
             "C:\\Users\\Derya",
             "G:\\",
@@ -1026,7 +1026,13 @@
             "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts\\Spa0000484",
             "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts",
             "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts\\Gedik Tavukçuluk (1)",
-            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts"
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts",
+            "I:\\Shared drives",
+            "I:\\Shared drives\\90 - ENTOMAK APP",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Database_Backups (1)",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Database_Backups"
         ],
         "column_visibility": {
             "name": true,
@@ -1065,7 +1071,7 @@
         "locked_column_widths": {}
     },
     "right_panel": {
-        "current_path": "I:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Offers",
+        "current_path": "C:\\Users\\Derya",
         "history": [
             "C:\\Users\\Derya",
             "C:\\Users\\Derya\\Downloads",
@@ -1804,7 +1810,15 @@
             "I:\\Shared drives\\90 - ENTOMAK APP\\test-app",
             "I:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Database_Backups",
             "I:\\Shared drives\\90 - ENTOMAK APP\\test-app",
-            "I:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Offers"
+            "I:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Offers",
+            "F:\\",
+            "I:\\",
+            "I:\\Shared drives",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app",
+            "I:\\Shared drives\\90 - ENTOMAK APP",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\test-app",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Database_Backups",
+            "C:\\Users\\Derya"
         ],
         "column_visibility": {
             "name": true,
@@ -1814,7 +1828,7 @@
         },
         "filter_mode": "contains",
         "filter_kind": "all",
-        "filter_text": "",
+        "filter_text": "te",
         "filter_exclude_text": "",
         "filter_extensions": "",
         "filter_words_combine_and": true,
