@@ -1028,25 +1028,12 @@
             "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts\\Gedik Tavukçuluk (1)",
             "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts"
         ],
-        "column_widths": {
-            "name": 437,
-            "size": 86,
-            "type": 70,
-            "date_modified": 124
-        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1062,7 +1049,20 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        }
+        },
+        "column_widths": {
+            "name": 437,
+            "size": 86,
+            "type": 70,
+            "date_modified": 124
+        },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {}
     },
     "right_panel": {
         "current_path": "I:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Offers",
@@ -1806,25 +1806,12 @@
             "I:\\Shared drives\\90 - ENTOMAK APP\\test-app",
             "I:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Offers"
         ],
-        "column_widths": {
-            "name": 575,
-            "size": 100,
-            "type": 100,
-            "date_modified": 124
-        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1840,6 +1827,19 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        }
+        },
+        "column_widths": {
+            "name": 575,
+            "size": 100,
+            "type": 100,
+            "date_modified": 124
+        },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {}
     }
 }
