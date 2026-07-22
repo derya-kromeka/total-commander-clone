@@ -536,6 +536,8 @@ function Get-DefaultCommitMessage {
 }
 
 function Ensure-InitialCommit {
+    param([switch] $AutoCommit)
+
     $hasCommits = $true
     try {
         Invoke-Git -Args @("rev-parse", "HEAD") | Out-Null
@@ -563,7 +565,12 @@ function Ensure-InitialCommit {
             Write-Ok ("CHANGELOG latest release: v{0} (no [Unreleased] notes - using that version)" -f (Format-ProjectVersion $latestReleased))
         }
         $defaultMsg = Get-DefaultCommitMessage
-        $msg = Read-HostWithDefault -Prompt "Commit message" -Default $defaultMsg
+        if ($AutoCommit) {
+            $msg = $defaultMsg
+            Write-Ok "Auto-commit message: $msg"
+        } else {
+            $msg = Read-HostWithDefault -Prompt "Commit message" -Default $defaultMsg
+        }
         Invoke-Git -Args @("add", "-A") | Out-Null
         Invoke-Git -Args @("commit", "-m", $msg) | Out-Null
         Write-Ok "Changes committed"
@@ -571,12 +578,15 @@ function Ensure-InitialCommit {
 }
 
 function Invoke-GitPush {
-    param([string] $RemoteUrl)
+    param(
+        [string] $RemoteUrl,
+        [switch] $AutoCommit
+    )
 
     Write-Step "Pushing to Git ($RemoteName)"
     $branch = Get-CurrentBranch
     Ensure-BranchExists -Name $branch
-    Ensure-InitialCommit
+    Ensure-InitialCommit -AutoCommit:$AutoCommit
 
     $pushArgs = @("push", "-u", $RemoteName, $branch)
     $useAuth = [bool]$script:GitAuth
@@ -903,7 +913,7 @@ function Invoke-BuildSync {
     if (-not $remoteVer) {
         Write-Ok "Remote APP_VERSION: (no remote branch or app_version.py yet)"
         Write-Step "Local version is ahead - pushing first"
-        Invoke-GitPush -RemoteUrl $RemoteUrl
+        Invoke-GitPush -RemoteUrl $RemoteUrl -AutoCommit
         return
     }
 
@@ -911,7 +921,7 @@ function Invoke-BuildSync {
 
     if ($localVer -gt $remoteVer) {
         Write-Step "Local version is ahead - pushing first"
-        Invoke-GitPush -RemoteUrl $remoteUrl
+        Invoke-GitPush -RemoteUrl $remoteUrl -AutoCommit
     } elseif ($localVer -lt $remoteVer) {
         Write-Step "Local version is behind - pulling first"
         if (-not (Ensure-UpstreamBranch -Remote $RemoteName -Branch $branch)) {

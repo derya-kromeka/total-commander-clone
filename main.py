@@ -160,7 +160,9 @@ def main():
     if icon_path:
         app.setWindowIcon(QIcon(icon_path))
 
-    settings_manager = SettingsManager(config_path)
+    # Project/git root for per-PC backups under backup/settings/<hostname>/.
+    # Prefer walking from source/exe so frozen builds in dist\ still find the repo.
+    settings_manager = SettingsManager(config_path, project_root=base_path)
 
     font_size = int(settings_manager.getSetting("font_size", 10))
     ui_scale = settings_manager.getSetting("ui_scale", 100)

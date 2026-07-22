@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.45] - 2026-07-22
+
+### Added
+
+- **Per-computer settings backup**: On every settings/state save, the app writes the latest `settings.json`, `bookmarks.json`, `libraries.json`, and related state under `backup/settings/<computer-name>/` (overwrites previous files for that PC). It then best-effort commits and pushes those files to the Git remote (uses a saved PAT from `scripts\git-config-account.cmd` when available).
+
+## [0.4.44] - 2026-07-22
+
+### Added
+
+- **Search filter enhancements**: Filter options (gear) now support **exclude** terms, **AND/OR** matching for multiple include words, and **file extension** filters (e.g. `txt, pdf, docx`). Folders are not filtered by extension; exclude removes matches when any exclude word appears in the name.
+
 ## [0.4.43] - 2026-07-22
 
 ### Added

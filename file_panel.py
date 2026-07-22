@@ -16,6 +16,13 @@ import time
 from datetime import datetime
 
 from filter_spec import FilterSpec
+from name_filter import (
+    match_exclude_terms,
+    match_extension,
+    match_include_terms,
+    parse_extensions,
+    parse_filter_terms,
+)
 from recursive_scan_worker import RecursiveScanThread
 
 
@@ -659,10 +666,16 @@ class FileSortFilterProxy(QSortFilterProxyModel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._filter_text = ""
+        self._filter_exclude_text = ""
+        self._filter_extensions_text = ""
+        self._filter_extensions = []
+        self._filter_words_combine_and = True
         self._filter_mode = "contains"
         self._entry_kind = "all"
         self._regex_obj = None
         self._regex_invalid = False
+        self._include_regex_cache = {}
+        self._exclude_regex_cache = {}
         self._filter_spec = FilterSpec()
         self.setDynamicSortFilter(True)
 
@@ -670,15 +683,41 @@ class FileSortFilterProxy(QSortFilterProxyModel):
     # Method: setFilterText
     # --------------------------------------------------------
     def setFilterText(self, text):
-        self._filter_text = text
+        self._filter_text = text or ""
         self._regex_obj = None
         self._regex_invalid = False
-        if self._filter_mode == "regex" and text.strip():
+        self._include_regex_cache = {}
+        if self._filter_mode == "regex" and self._filter_text.strip():
             try:
-                self._regex_obj = re.compile(text, re.IGNORECASE | re.UNICODE)
+                self._regex_obj = re.compile(
+                    self._filter_text, re.IGNORECASE | re.UNICODE
+                )
             except re.error:
                 self._regex_invalid = True
         self.invalidateFilter()
+
+    def setFilterExcludeText(self, text):
+        self._filter_exclude_text = text or ""
+        self._exclude_regex_cache = {}
+        self.invalidateFilter()
+
+    def filterExcludeText(self):
+        return self._filter_exclude_text
+
+    def setFilterExtensionsText(self, text):
+        self._filter_extensions_text = text or ""
+        self._filter_extensions = parse_extensions(self._filter_extensions_text)
+        self.invalidateFilter()
+
+    def filterExtensionsText(self):
+        return self._filter_extensions_text
+
+    def setFilterWordsCombineAnd(self, combine_and):
+        self._filter_words_combine_and = bool(combine_and)
+        self.invalidateFilter()
+
+    def filterWordsCombineAnd(self):
+        return self._filter_words_combine_and
 
     # --------------------------------------------------------
     # Method: setFilterMode
@@ -688,6 +727,8 @@ class FileSortFilterProxy(QSortFilterProxyModel):
         if mode not in ("contains", "wildcard", "regex"):
             return
         self._filter_mode = mode
+        self._include_regex_cache = {}
+        self._exclude_regex_cache = {}
         self.setFilterText(self._filter_text)
 
     def filterMode(self):
@@ -731,20 +772,35 @@ class FileSortFilterProxy(QSortFilterProxyModel):
         if self._entry_kind == "files" and entry["is_dir"]:
             return False
 
-        if (self._filter_text or "").strip():
-            name = entry["name"]
-            ok = False
-            if self._filter_mode == "contains":
-                ok = self._filter_text.lower() in name.lower()
-            elif self._filter_mode == "wildcard":
-                pat = self._filter_text.strip()
-                ok = fnmatch.fnmatch(name.lower(), pat.lower())
-            elif self._filter_mode == "regex":
+        name = entry["name"]
+
+        if self._filter_extensions and not entry["is_dir"]:
+            if not match_extension(name, self._filter_extensions):
+                return False
+
+        exclude_terms = parse_filter_terms(self._filter_exclude_text)
+        if exclude_terms and match_exclude_terms(
+            name,
+            exclude_terms,
+            self._filter_mode,
+            self._exclude_regex_cache,
+        ):
+            return False
+
+        include_terms = parse_filter_terms(self._filter_text)
+        if include_terms:
+            if self._filter_mode == "regex" and len(include_terms) == 1:
                 if self._regex_invalid or self._regex_obj is None:
-                    ok = False
-                else:
-                    ok = self._regex_obj.search(name) is not None
-            if not ok:
+                    return False
+                if self._regex_obj.search(name) is None:
+                    return False
+            elif not match_include_terms(
+                name,
+                include_terms,
+                self._filter_mode,
+                self._filter_words_combine_and,
+                self._include_regex_cache,
+            ):
                 return False
 
         if self._filter_spec is not None and not self._filter_spec.is_empty():
@@ -1378,9 +1434,10 @@ class FilePanel(QWidget):
         self._filter_edit.setClearButtonEnabled(True)
         self._filter_edit.setToolTip(
             "Filter\n\n"
-            "Narrow the file list by name. Click the × on the right to clear the "
-            "filter text. Use the gear for full options (match mode, files/folders, "
-            "size, date, saved presets). Use Subfolders to search below the current folder."
+            "Narrow the file list by name. Separate multiple words with spaces; "
+            "use the gear for AND/OR, exclude terms, extensions, match mode, "
+            "files/folders, size, date, and saved presets. Use Subfolders to search "
+            "below the current folder."
         )
 
         self._btn_filter_options = QToolButton()
@@ -1389,8 +1446,9 @@ class FilePanel(QWidget):
         self._btn_filter_options.setIconSize(QSize(NAV_ICON_SIZE, NAV_ICON_SIZE))
         self._btn_filter_options.setToolTip(
             "Filter options\n\n"
-            "Open the filter dialog: match mode, files or folders only, subfolders, "
-            "size and modified date (with AND/OR), saved presets."
+            "Open the filter dialog: include/exclude words (AND/OR), file extensions, "
+            "match mode, files or folders only, subfolders, size and modified date "
+            "(with AND/OR), saved presets."
         )
         self._btn_filter_options.setAutoRaise(True)
         self._btn_filter_options.clicked.connect(self._onOpenFilterOptions)
@@ -2295,6 +2353,9 @@ class FilePanel(QWidget):
             "filter_mode": self._proxy_model.filterMode(),
             "filter_kind": self._proxy_model.entryKindFilter(),
             "filter_text": self._filter_edit.text(),
+            "filter_exclude_text": self._proxy_model.filterExcludeText(),
+            "filter_extensions": self._proxy_model.filterExtensionsText(),
+            "filter_words_combine_and": self._proxy_model.filterWordsCombineAnd(),
             "filter_include_subfolders": self._btn_filter_subfolders.isChecked(),
             "filter_advanced": self._proxy_model.filterSpec().to_dict(),
         }
@@ -2335,6 +2396,12 @@ class FilePanel(QWidget):
         self._filter_edit.setText(data.get("filter_text") or "")
         self._filter_edit.blockSignals(False)
         self._proxy_model.setFilterText(self._filter_edit.text())
+        self._proxy_model.setFilterExcludeText(data.get("filter_exclude_text") or "")
+        self._proxy_model.setFilterExtensionsText(data.get("filter_extensions") or "")
+        if "filter_words_combine_and" in data:
+            self._proxy_model.setFilterWordsCombineAnd(
+                bool(data.get("filter_words_combine_and", True))
+            )
         self._proxy_model.setFilterSpec(
             FilterSpec.from_dict(data.get("filter_advanced"))
         )
@@ -2645,6 +2712,9 @@ class FilePanel(QWidget):
     def getFilterState(self):
         return {
             "filter_text": self._filter_edit.text(),
+            "filter_exclude_text": self._proxy_model.filterExcludeText(),
+            "filter_extensions": self._proxy_model.filterExtensionsText(),
+            "filter_words_combine_and": self._proxy_model.filterWordsCombineAnd(),
             "filter_mode": self._proxy_model.filterMode(),
             "filter_kind": self._proxy_model.entryKindFilter(),
             "filter_include_subfolders": self._btn_filter_subfolders.isChecked(),
@@ -2659,6 +2729,11 @@ class FilePanel(QWidget):
         self._filter_edit.setText(ft)
         self._filter_edit.blockSignals(False)
         self._proxy_model.setFilterText(ft)
+        self._proxy_model.setFilterExcludeText(data.get("filter_exclude_text") or "")
+        self._proxy_model.setFilterExtensionsText(data.get("filter_extensions") or "")
+        self._proxy_model.setFilterWordsCombineAnd(
+            bool(data.get("filter_words_combine_and", True))
+        )
         fm = data.get("filter_mode")
         if fm in ("contains", "wildcard", "regex"):
             self._proxy_model.setFilterMode(fm)
@@ -2678,6 +2753,9 @@ class FilePanel(QWidget):
     def clearFilter(self):
         self.applyFilterState({
             "filter_text": "",
+            "filter_exclude_text": "",
+            "filter_extensions": "",
+            "filter_words_combine_and": True,
             "filter_mode": "contains",
             "filter_kind": "all",
             "filter_include_subfolders": False,
@@ -2735,6 +2813,15 @@ class FilePanel(QWidget):
             hint.append("files")
         if self._btn_filter_subfolders.isChecked():
             hint.append("subfolders")
+        if self._proxy_model.filterExcludeText().strip():
+            hint.append("exclude")
+        if self._proxy_model.filterExtensionsText().strip():
+            hint.append("ext")
+        if parse_filter_terms(self._filter_edit.text()):
+            if self._proxy_model.filterWordsCombineAnd():
+                hint.append("AND")
+            else:
+                hint.append("OR")
         spec = self._proxy_model.filterSpec()
         if spec is not None and not spec.is_empty():
             hint.append("size/date")

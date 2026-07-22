@@ -2,10 +2,14 @@
 Total Commander Clone - Settings Manager
 Handles loading and saving of settings.json and state.json.
 Auto-creates config files with sensible defaults on first run.
+Also writes latest per-computer backups under backup/settings/<host>/
+and schedules a best-effort git upload of those files.
 """
 
 import json
 import os
+
+from config_backup import backupConfigAndUpload
 
 
 # ------------------------------------------------------------
@@ -60,6 +64,9 @@ DEFAULT_STATE = {
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
+        "filter_exclude_text": "",
+        "filter_extensions": "",
+        "filter_words_combine_and": True,
         "filter_include_subfolders": False,
         "filter_advanced": {},
     },
@@ -75,6 +82,9 @@ DEFAULT_STATE = {
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
+        "filter_exclude_text": "",
+        "filter_extensions": "",
+        "filter_words_combine_and": True,
         "filter_include_subfolders": False,
         "filter_advanced": {},
     },
@@ -107,11 +117,14 @@ class SettingsManager:
     # Purpose: Initializes the manager, resolves file paths,
     #          and loads (or creates) both JSON config files.
     # Input:  base_path (str) - Directory where config files live.
+    #         project_root (str|None) - Git/project root for backups.
     # --------------------------------------------------------
-    def __init__(self, base_path):
+    def __init__(self, base_path, project_root=None):
         self._base_path = base_path
+        self._project_root = project_root or base_path
         self._settings_path = os.path.join(base_path, self.SETTINGS_FILENAME)
         self._state_path = os.path.join(base_path, self.STATE_FILENAME)
+        self._backup_enabled = True
 
         self._settings = self._loadOrCreate(self._settings_path, DEFAULT_SETTINGS)
         self._state = self._loadOrCreate(self._state_path, DEFAULT_STATE)
@@ -315,10 +328,31 @@ class SettingsManager:
     # --------------------------------------------------------
     def saveSettings(self):
         self._writeJson(self._settings_path, self._settings)
+        self._backupConfigToRepo()
 
     def saveState(self):
         self._writeJson(self._state_path, self._state)
+        self._backupConfigToRepo()
 
     def saveAll(self):
-        self.saveSettings()
-        self.saveState()
+        self._writeJson(self._settings_path, self._settings)
+        self._writeJson(self._state_path, self._state)
+        self._backupConfigToRepo()
+
+    # --------------------------------------------------------
+    # Method: _backupConfigToRepo
+    # Purpose: Write latest backup/settings/<computer>/ files and
+    #          schedule git commit/push (debounced, background).
+    # --------------------------------------------------------
+    def _backupConfigToRepo(self):
+        if not self._backup_enabled:
+            return
+        try:
+            backupConfigAndUpload(
+                self._settings,
+                self._state,
+                project_root=self._project_root,
+                upload=True,
+            )
+        except Exception as e:
+            print(f"[SettingsManager] Config backup failed: {e}")

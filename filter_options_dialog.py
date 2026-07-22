@@ -60,7 +60,7 @@ class FilterOptionsDialog(QDialog):
         self._settings = settings_manager
         self.setWindowTitle("Filter options")
         self.setModal(True)
-        self.resize(520, 560)
+        self.resize(560, 640)
 
         root = QVBoxLayout(self)
 
@@ -68,8 +68,33 @@ class FilterOptionsDialog(QDialog):
         name_box = QGroupBox("Name filter (toolbar)", self)
         name_form = QFormLayout()
         self._filter_text = QLineEdit(self)
-        self._filter_text.setPlaceholderText("Text to match in file or folder name…")
-        name_form.addRow("Contains / pattern", self._filter_text)
+        self._filter_text.setPlaceholderText(
+            "Words to find in file or folder name (separate with spaces or commas)…"
+        )
+        name_form.addRow("Include", self._filter_text)
+
+        words_row = QHBoxLayout()
+        self._bg_words = QButtonGroup(self)
+        self._rb_words_and = QRadioButton("Match all words (AND)")
+        self._rb_words_or = QRadioButton("Match any word (OR)")
+        self._bg_words.addButton(self._rb_words_and)
+        self._bg_words.addButton(self._rb_words_or)
+        words_row.addWidget(self._rb_words_and)
+        words_row.addWidget(self._rb_words_or)
+        words_row.addStretch()
+        name_form.addRow("Multiple words", words_row)
+
+        self._filter_exclude = QLineEdit(self)
+        self._filter_exclude.setPlaceholderText(
+            "Exclude names containing any of these words…"
+        )
+        name_form.addRow("Exclude", self._filter_exclude)
+
+        self._filter_extensions = QLineEdit(self)
+        self._filter_extensions.setPlaceholderText(
+            "File types only, e.g. txt, pdf, docx (folders are not filtered by extension)"
+        )
+        name_form.addRow("Extensions", self._filter_extensions)
 
         match_row = QHBoxLayout()
         self._bg_match = QButtonGroup(self)
@@ -149,7 +174,9 @@ class FilterOptionsDialog(QDialog):
         root.addWidget(adv_box)
 
         root.addWidget(QLabel(
-            "Name rules always apply together with the advanced block (name AND advanced).",
+            "Include, exclude, and extension rules apply together with the advanced "
+            "size/date block (name AND advanced). Exclude removes matches even when "
+            "include terms match.",
             self,
         ))
 
@@ -211,6 +238,10 @@ class FilterOptionsDialog(QDialog):
         fp = self._file_panel
         st = fp.getFilterState()
         self._filter_text.setText(st.get("filter_text") or "")
+        self._filter_exclude.setText(st.get("filter_exclude_text") or "")
+        self._filter_extensions.setText(st.get("filter_extensions") or "")
+        self._rb_words_and.setChecked(bool(st.get("filter_words_combine_and", True)))
+        self._rb_words_or.setChecked(not bool(st.get("filter_words_combine_and", True)))
         mode = st.get("filter_mode", "contains")
         self._rb_contains.setChecked(mode == "contains")
         self._rb_wildcard.setChecked(mode == "wildcard")
@@ -291,6 +322,9 @@ class FilterOptionsDialog(QDialog):
             kind = "files"
         return {
             "filter_text": self._filter_text.text(),
+            "filter_exclude_text": self._filter_exclude.text(),
+            "filter_extensions": self._filter_extensions.text(),
+            "filter_words_combine_and": self._rb_words_and.isChecked(),
             "filter_mode": mode,
             "filter_kind": kind,
             "filter_include_subfolders": self._chk_subfolders.isChecked(),
@@ -323,6 +357,10 @@ class FilterOptionsDialog(QDialog):
         if not isinstance(pl, dict):
             return
         self._filter_text.setText(pl.get("filter_text") or "")
+        self._filter_exclude.setText(pl.get("filter_exclude_text") or "")
+        self._filter_extensions.setText(pl.get("filter_extensions") or "")
+        self._rb_words_and.setChecked(bool(pl.get("filter_words_combine_and", True)))
+        self._rb_words_or.setChecked(not bool(pl.get("filter_words_combine_and", True)))
         mode = pl.get("filter_mode", "contains")
         self._rb_contains.setChecked(mode == "contains")
         self._rb_wildcard.setChecked(mode == "wildcard")
