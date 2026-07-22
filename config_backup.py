@@ -199,6 +199,28 @@ def writeConfigBackup(
 
 
 # ------------------------------------------------------------
+# Function: _hiddenSubprocessKwargs
+# Purpose: On Windows, hide console windows for git/powershell so the
+#          GUI app does not flash cmd windows on every backup upload.
+# ------------------------------------------------------------
+def _hiddenSubprocessKwargs() -> Dict[str, Any]:
+    if os.name != "nt":
+        return {}
+    # CREATE_NO_WINDOW (0x08000000) — available on Python 3.7+ as
+    # subprocess.CREATE_NO_WINDOW; keep literal fallback for older builds.
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    kwargs: Dict[str, Any] = {"creationflags": flags}
+    try:
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
+        kwargs["startupinfo"] = startupinfo
+    except Exception:
+        pass
+    return kwargs
+
+
+# ------------------------------------------------------------
 # Function: _runGit
 # Purpose: Run a git command in repo_root; return (ok, combined output).
 # ------------------------------------------------------------
@@ -211,6 +233,7 @@ def _runGit(repo_root: str, args, timeout: int = 60):
             text=True,
             timeout=timeout,
             check=False,
+            **_hiddenSubprocessKwargs(),
         )
         out = (completed.stdout or "") + (completed.stderr or "")
         return completed.returncode == 0, out.strip()
@@ -235,20 +258,31 @@ def _loadSavedGitAuth(repo_root: str):
             return None
         if os.name != "nt":
             return None
+        # Escape single quotes for PowerShell single-quoted path literal.
+        pat_ps = pat_path.replace("'", "''")
         ps = (
             "$ErrorActionPreference='Stop';"
-            f"$enc = Get-Content -LiteralPath '{pat_path}' -Raw -Encoding UTF8;"
+            f"$enc = Get-Content -LiteralPath '{pat_ps}' -Raw -Encoding UTF8;"
             "$sec = ConvertTo-SecureString -String $enc;"
             "$bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec);"
             "try { [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr) }"
             "finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }"
         )
         completed = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps],
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                ps,
+            ],
             capture_output=True,
             text=True,
             timeout=20,
             check=False,
+            **_hiddenSubprocessKwargs(),
         )
         if completed.returncode != 0:
             return None

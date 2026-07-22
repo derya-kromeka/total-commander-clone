@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.53] - 2026-07-22
+
+### Fixed
+
+- **No more flashing Git cmd windows**: Background config backup (`git add` / `commit` / `push` and PAT decrypt via PowerShell) now runs with a hidden console on Windows (`CREATE_NO_WINDOW`), so starting the app or saving settings no longer opens stacks of `git.exe` console windows.
+
 ## [0.4.52] - 2026-07-22
 
 ### Changed
