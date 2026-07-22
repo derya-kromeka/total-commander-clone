@@ -1002,25 +1002,12 @@
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust\\scripts",
             "C:\\Users\\Derya"
         ],
-        "column_widths": {
-            "name": 437,
-            "size": 86,
-            "type": 70,
-            "date_modified": 124
-        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1036,7 +1023,20 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        }
+        },
+        "column_widths": {
+            "name": 437,
+            "size": 86,
+            "type": 70,
+            "date_modified": 124
+        },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {}
     },
     "right_panel": {
         "current_path": "I:\\",
@@ -1774,25 +1774,12 @@
             "G:\\",
             "F:\\"
         ],
-        "column_widths": {
-            "name": 575,
-            "size": 100,
-            "type": 100,
-            "date_modified": 124
-        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "files",
         "filter_text": "",
@@ -1808,6 +1795,19 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        }
+        },
+        "column_widths": {
+            "name": 575,
+            "size": 100,
+            "type": 100,
+            "date_modified": 124
+        },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {}
     }
 }
