@@ -1032,7 +1032,26 @@
             "I:\\Shared drives\\90 - ENTOMAK APP\\live-app",
             "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Database_Backups (1)",
             "I:\\Shared drives\\90 - ENTOMAK APP\\live-app",
-            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Database_Backups"
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Database_Backups",
+            "C:\\Users\\Derya\\Desktop",
+            "C:\\Users\\Derya\\Downloads",
+            "I:\\",
+            "I:\\Shared drives",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 - SERVİS ve DANIŞMANLIK TEKLİF VE FT",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 - SERVİS ve DANIŞMANLIK TEKLİF VE FT\\Sen piliç",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 - SERVİS ve DANIŞMANLIK TEKLİF VE FT\\Sen piliç\\Sogutlu",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 - SERVİS ve DANIŞMANLIK TEKLİF VE FT\\Sen piliç\\Sogutlu\\2026",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 - SERVİS ve DANIŞMANLIK TEKLİF VE FT\\Sen piliç\\Sogutlu\\2026\\Söğütlü",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 - SERVİS ve DANIŞMANLIK TEKLİF VE FT\\Sen piliç\\Sogutlu\\2026",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 - SERVİS ve DANIŞMANLIK TEKLİF VE FT\\Sen piliç\\Sogutlu",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 - SERVİS ve DANIŞMANLIK TEKLİF VE FT\\Sen piliç",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 - SERVİS ve DANIŞMANLIK TEKLİF VE FT",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 -  MUHASEBE",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 -  MUHASEBE\\2026",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 -  MUHASEBE\\2026\\sgk",
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 -  MUHASEBE\\2026\\sgk\\mayıs"
         ],
         "column_visibility": {
             "name": true,
@@ -1057,7 +1076,7 @@
             "combine_and": true
         },
         "column_widths": {
-            "name": 437,
+            "name": 530,
             "size": 86,
             "type": 70,
             "date_modified": 124
