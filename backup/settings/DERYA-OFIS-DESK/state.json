@@ -148,11 +148,11 @@
     "saved_library_filters": [],
     "saved_file_filters": [],
     "sidebar_state": {
-        "current_tab": "libraries"
+        "current_tab": "bookmarks"
     },
     "recent_paths": [],
     "left_panel": {
-        "current_path": "C:\\Users\\Derya",
+        "current_path": "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts",
         "history": [
             "C:\\Users\\Derya",
             "G:\\",
@@ -1006,14 +1006,47 @@
             "I:\\",
             "I:\\",
             "I:\\Shared drives",
-            "I:\\Shared drives\\90 - ENTOMAK APP"
+            "I:\\Shared drives\\90 - ENTOMAK APP",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Offers",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Offers\\Abalıoğlu  _ Lezita (3)",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Offers",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts\\ErPiliç",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts\\ErPiliç\\Spa0000211_07-11-2024",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts\\ErPiliç",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts\\Spa0000435",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts\\Spa0000435\\Siyazan Broiler_02-03-2026",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts\\Spa0000435",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts\\Spa0000484",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts\\Spa0000484\\APC - Azerbaijan Poultry_21-07-2026",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts\\Spa0000484",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts\\Gedik Tavukçuluk (1)",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\live-app\\Spare_Parts"
         ],
+        "column_widths": {
+            "name": 437,
+            "size": 86,
+            "type": 70,
+            "date_modified": 124
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1029,23 +1062,10 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 437,
-            "size": 86,
-            "type": 70,
-            "date_modified": 124
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     },
     "right_panel": {
-        "current_path": "I:\\",
+        "current_path": "I:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Offers",
         "history": [
             "C:\\Users\\Derya",
             "C:\\Users\\Derya\\Downloads",
@@ -1781,16 +1801,32 @@
             "F:\\",
             "I:\\Shared drives",
             "I:\\Shared drives\\90 - ENTOMAK APP",
-            "I:\\"
+            "I:\\Shared drives\\90 - ENTOMAK APP\\test-app",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Database_Backups",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\test-app",
+            "I:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Offers"
         ],
+        "column_widths": {
+            "name": 575,
+            "size": 100,
+            "type": 100,
+            "date_modified": 124
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
-        "filter_kind": "files",
+        "filter_kind": "all",
         "filter_text": "",
         "filter_exclude_text": "",
         "filter_extensions": "",
@@ -1804,19 +1840,6 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 575,
-            "size": 100,
-            "type": 100,
-            "date_modified": 124
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     }
 }

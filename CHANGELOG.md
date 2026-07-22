@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.49] - 2026-07-22
+
+### Changed
+
+- **Filter visibility**: When any panel filter is active, the filter field gets a red border, a red **✕ Clear** button appears beside it, and a red banner above the file list explains what is filtered and how many items are hidden (e.g. “files only — 2 item(s) hidden”). The status bar also warns when rows are hidden. Click either **Clear** control to reset all filters for that panel.
+
 ## [0.4.48] - 2026-07-22
 
 ### Added

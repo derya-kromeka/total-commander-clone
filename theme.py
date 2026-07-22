@@ -367,20 +367,40 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     QLineEdit#panelFilterEdit {{
         min-height: {m['nav_bar_height']}px;
         max-height: {m['nav_bar_height']}px;
-        padding: {m['nav_line_pad_v']}px {m['nav_filter_pad_right']}px {m['nav_line_pad_v']}px {m['nav_line_pad_h']}px;
+        padding: {m['nav_line_pad_v']}px {m['nav_line_pad_h']}px;
     }}
-    QLineEdit#panelFilterEdit QToolButton {{
-        border: none;
+    QLineEdit#panelFilterEdit[filterActive="true"] {{
+        border: 2px solid {c['red']};
+        background-color: rgba(243, 139, 168, 0.14);
+        color: {c['text']};
+    }}
+    QPushButton#filterClearButton {{
+        color: {c['red']};
+        background-color: rgba(243, 139, 168, 0.12);
+        border: 2px solid {c['red']};
+        border-radius: 4px;
+        font-weight: bold;
+        padding: {m['nav_line_pad_v']}px {m['nav_line_pad_h']}px;
+        min-height: {m['nav_bar_height']}px;
+        max-height: {m['nav_bar_height']}px;
+    }}
+    QPushButton#filterClearButton:hover {{
+        background-color: rgba(243, 139, 168, 0.28);
+        border-color: {c['red']};
+    }}
+    QPushButton#filterClearButton:pressed {{
+        background-color: rgba(243, 139, 168, 0.4);
+    }}
+    QWidget#panelFilterBanner {{
+        background-color: rgba(243, 139, 168, 0.12);
+        border: 2px solid {c['red']};
+        border-radius: 5px;
+    }}
+    QLabel#panelFilterBannerText {{
+        color: {c['red']};
+        font-weight: bold;
+        font-size: {fs['small']}pt;
         background: transparent;
-        padding: 2px;
-        margin: 0 2px 0 0;
-        border-radius: 3px;
-    }}
-    QLineEdit#panelFilterEdit QToolButton:hover {{
-        background-color: rgba(243, 139, 168, 0.22);
-    }}
-    QLineEdit#panelFilterEdit QToolButton:pressed {{
-        background-color: rgba(243, 139, 168, 0.35);
     }}
     QLineEdit#panelRenameEdit {{
         background-color: {c['selection']};
@@ -582,6 +602,10 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     QLabel#panelLabel {{
         color: {c['subtext0']};
         font-size: {fs['small']}pt;
+    }}
+    QLabel#panelLabel[filterWarning="true"] {{
+        color: {c['peach']};
+        font-weight: bold;
     }}
     QLabel#statusLabel {{
         color: {c['subtext0']};
