@@ -2306,9 +2306,10 @@ class FileManagerApp(QMainWindow):
             self,
             "Update and rebuild",
             "The app will close now.\n\n"
-            "A console window will pull the latest Git changes, rebuild the "
-            ".exe (scripts\\build.bat), and start the new version.\n\n"
-            "Continue?",
+            "A console window will get the latest public sources "
+            "(git pull, or GitHub zip if Git is not installed), rebuild with "
+            "scripts\\build-user.bat, and start the new version.\n\n"
+            "No GitHub login is required. Continue?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.Yes,
         )

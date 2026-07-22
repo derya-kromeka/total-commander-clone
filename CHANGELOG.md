@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.57] - 2026-07-22
+
+### Added
+
+- **`scripts\build-user.bat`**: Plain rebuild of the current sources with **no Git sync** (no account, push, or pull). Calls `build.bat skip-git`.
+- **Updates without Git installed**: If Git is missing, `update-and-rebuild.bat` downloads the public GitHub branch as a zip (`download-public-update.ps1`), merges sources (preserving `dist`, `.venv`, `.git`, backups), then builds with `build-user.bat`. Version checks already used anonymous HTTPS.
+
+### Changed
+
+- **`scripts\build.bat`**: Documented as the developer build (Git BuildSync first). Users should prefer `build-user.bat`.
+
 ## [0.4.56] - 2026-07-22
 
 ### Added

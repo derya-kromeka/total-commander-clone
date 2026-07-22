@@ -3,8 +3,8 @@ setlocal EnableExtensions
 
 REM ------------------------------------------------------------
 REM Script: scripts/build.bat
-REM Purpose: Build standalone .exe with PyInstaller for correct
-REM          taskbar icon and launch behavior.
+REM Purpose: Developer build — sync with Git (BuildSync), then build
+REM          a standalone .exe with PyInstaller.
 REM Project root: parent of this scripts\ folder (portable; no absolute paths).
 REM
 REM Builds to dist_build\ first so a locked dist\TotalCommanderClone does not
@@ -15,6 +15,8 @@ REM shortcut path keeps working. Only prompts interactively if merge also fails.
 REM
 REM Before building, compares APP_VERSION to the remote and pushes or pulls as needed
 REM (scripts\git-sync.ps1 -Action BuildSync). Pass skip-git to skip that step.
+REM
+REM For a plain rebuild with NO Git (users / no account): use scripts\build-user.bat
 REM ------------------------------------------------------------
 
 cd /d "%~dp0.."

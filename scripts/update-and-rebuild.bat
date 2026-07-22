@@ -3,18 +3,22 @@ setlocal EnableExtensions
 
 REM ------------------------------------------------------------
 REM Script: scripts/update-and-rebuild.bat
-REM Purpose: Called from the app when the user accepts a Git update.
-REM          Waits for TotalCommanderClone.exe to exit, pulls the
-REM          latest code, rebuilds the standalone exe, then relaunches.
+REM Purpose: Called from the app when the user accepts an update.
+REM          Waits for TotalCommanderClone.exe to exit, gets the
+REM          latest public code (git pull OR GitHub zip if Git is
+REM          missing), rebuilds with build-user.bat, then relaunches.
+REM
+REM No GitHub username/PAT required for the public repo.
 REM ------------------------------------------------------------
 
 cd /d "%~dp0.."
 
 set "APP_EXE=TotalCommanderClone.exe"
 set "DIST_EXE=dist\TotalCommanderClone\TotalCommanderClone.exe"
-set "BRANCH="
+set "BRANCH=main"
 set "REMOTE=origin"
 set "PUBLIC_URL=https://github.com/derya-kromeka/total-commander-clone.git"
+set "HAVE_GIT="
 
 echo.
 echo ============================================================
@@ -43,45 +47,26 @@ echo [INFO] App is not running. Continuing...
 echo.
 
 where git >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] Git is not installed or not on PATH.
-    echo         Install Git for Windows, then run this script again.
-    goto fail
-)
+if not errorlevel 1 set "HAVE_GIT=1"
 
-for /f "delims=" %%b in ('git branch --show-current 2^>nul') do set "BRANCH=%%b"
+if defined HAVE_GIT (
+    for /f "delims=" %%b in ('git branch --show-current 2^>nul') do set "BRANCH=%%b"
+)
 if "%BRANCH%"=="" set "BRANCH=main"
 
-git remote get-url %REMOTE% >nul 2>&1
-if errorlevel 1 (
-    echo [INFO] Adding public remote %REMOTE% -^> %PUBLIC_URL%
-    git remote add %REMOTE% "%PUBLIC_URL%"
-    if errorlevel 1 (
-        echo [ERROR] Could not add remote %REMOTE%.
-        goto fail
-    )
-)
-
-echo [INFO] Fetching %REMOTE%/%BRANCH% ^(public HTTPS, no login^)...
-git fetch "%REMOTE%" "%BRANCH%"
-if errorlevel 1 (
-    echo [ERROR] git fetch failed.
-    echo         Public clone URL: %PUBLIC_URL%
-    echo         Check network access, then retry or run scripts\git-pull.cmd
-    goto fail
-)
-
-echo [INFO] Merging %REMOTE%/%BRANCH% into local branch...
-git merge --no-edit "%REMOTE%/%BRANCH%"
-if errorlevel 1 (
-    echo [ERROR] git merge failed ^(conflicts or local changes?^).
-    echo         Resolve conflicts, then run: scripts\build.bat skip-git
-    goto fail
+if defined HAVE_GIT (
+    echo [INFO] Git found - updating via git fetch/merge ^(public HTTPS, no login^)...
+    call :update_via_git
+    if errorlevel 1 goto fail
+) else (
+    echo [INFO] Git is not installed - updating via public GitHub zip download...
+    call :update_via_zip
+    if errorlevel 1 goto fail
 )
 
 echo.
-echo [INFO] Building new executable ^(scripts\build.bat skip-git^)...
-call "%~dp0build.bat" skip-git
+echo [INFO] Building new executable ^(scripts\build-user.bat^)...
+call "%~dp0build-user.bat"
 if errorlevel 1 (
     echo [ERROR] Build failed. See messages above.
     goto fail
@@ -104,6 +89,46 @@ echo.
 echo Update did not finish successfully.
 pause
 exit /b 1
+
+REM ------------------------------------------------------------
+:update_via_git
+if not exist ".git" (
+    echo [WARN] No .git folder - falling back to zip download.
+    call :update_via_zip
+    exit /b %ERRORLEVEL%
+)
+
+git remote get-url %REMOTE% >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] Adding public remote %REMOTE% -^> %PUBLIC_URL%
+    git remote add %REMOTE% "%PUBLIC_URL%"
+    if errorlevel 1 (
+        echo [ERROR] Could not add remote %REMOTE%.
+        exit /b 1
+    )
+)
+
+echo [INFO] Fetching %REMOTE%/%BRANCH%...
+git fetch "%REMOTE%" "%BRANCH%"
+if errorlevel 1 (
+    echo [ERROR] git fetch failed.
+    echo         Public clone URL: %PUBLIC_URL%
+    exit /b 1
+)
+
+echo [INFO] Merging %REMOTE%/%BRANCH% into local branch...
+git merge --no-edit "%REMOTE%/%BRANCH%"
+if errorlevel 1 (
+    echo [ERROR] git merge failed ^(conflicts or local changes?^).
+    echo         Resolve conflicts, then run: scripts\build-user.bat
+    exit /b 1
+)
+exit /b 0
+
+REM ------------------------------------------------------------
+:update_via_zip
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0download-public-update.ps1" -ProjectRoot "%cd%" -Branch "%BRANCH%"
+exit /b %ERRORLEVEL%
 
 REM ------------------------------------------------------------
 :is_app_running

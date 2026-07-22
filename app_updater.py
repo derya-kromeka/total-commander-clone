@@ -82,18 +82,91 @@ def compareVersions(a: str, b: str) -> Optional[int]:
 
 
 # ------------------------------------------------------------
+# Function: _looksLikeProjectRoot
+# Purpose: Folder has main.py and the update/build scripts.
+# ------------------------------------------------------------
+def _looksLikeProjectRoot(path: str) -> bool:
+    if not path or not os.path.isdir(path):
+        return False
+    return (
+        os.path.isfile(os.path.join(path, "main.py"))
+        and os.path.isfile(os.path.join(path, "scripts", "update-and-rebuild.bat"))
+        and (
+            os.path.isfile(os.path.join(path, "scripts", "build-user.bat"))
+            or os.path.isfile(os.path.join(path, "scripts", "build.bat"))
+        )
+    )
+
+
+# ------------------------------------------------------------
+# Function: findProjectRoot
+# Purpose: Walk parents for a project folder (with or without .git).
+# ------------------------------------------------------------
+def findProjectRoot(start_path: Optional[str] = None) -> Optional[str]:
+    candidates: List[str] = []
+    if start_path:
+        candidates.append(start_path)
+    candidates.append(os.path.dirname(os.path.abspath(__file__)))
+    if getattr(__import__("sys"), "frozen", False):
+        import sys
+
+        candidates.append(os.path.dirname(sys.executable))
+
+    seen = set()
+    for start in candidates:
+        if not start:
+            continue
+        cur = os.path.abspath(start)
+        for _ in range(12):
+            if cur in seen:
+                break
+            seen.add(cur)
+            if _looksLikeProjectRoot(cur):
+                return cur
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
+    return None
+
+
+# ------------------------------------------------------------
 # Function: resolveUpdateRepoRoot
-# Purpose: Find the git/project root that contains scripts + .git.
+# Purpose: Find project root for updates (.git preferred, not required).
 # ------------------------------------------------------------
 def resolveUpdateRepoRoot(project_root: Optional[str] = None) -> Optional[str]:
+    # Prefer a real git checkout when present.
     root = resolveBackupRepoRoot(project_root)
-    if root and os.path.isdir(os.path.join(root, ".git")):
+    if root and os.path.isdir(os.path.join(root, ".git")) and _looksLikeProjectRoot(root):
         return root
     if project_root:
         found = findGitRepoRoot(project_root)
-        if found:
+        if found and _looksLikeProjectRoot(found):
             return found
-    return None
+    # Zip-based updates work without .git — only need source + scripts.
+    return findProjectRoot(project_root)
+
+
+# ------------------------------------------------------------
+# Function: _gitAvailable
+# ------------------------------------------------------------
+def _gitAvailable() -> bool:
+    try:
+        completed = subprocess.run(
+            ["git", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            **(
+                {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+                if os.name == "nt"
+                else {}
+            ),
+        )
+        return completed.returncode == 0
+    except Exception:
+        return False
 
 
 # ------------------------------------------------------------
@@ -238,9 +311,9 @@ def checkRemoteAppVersion(
     if not repo_root:
         result["status"] = "no_repo"
         result["message"] = (
-            "No Git repository found near this app. "
-            "Update checks need the project folder with a .git directory "
-            f"(public remote: {PUBLIC_REPO_HTTPS})."
+            "Could not find the project folder near this app "
+            "(needs main.py and scripts\\update-and-rebuild.bat).\n"
+            f"Public repo: https://github.com/{PUBLIC_REPO_OWNER}/{PUBLIC_REPO_NAME}"
         )
         return result
 
@@ -249,18 +322,24 @@ def checkRemoteAppVersion(
         result["status"] = "no_script"
         result["message"] = (
             f"Update script not found:\n{script}\n\n"
-            "Clone or keep the full project so scripts\\update-and-rebuild.bat exists."
+            "Keep the full project folder so updates can download sources and rebuild."
         )
         return result
 
-    ensurePublicOrigin(repo_root)
-    remote = _defaultRemote(repo_root)
-    branch = _currentBranch(repo_root)
-    result["remote_name"] = remote
+    has_git = _gitAvailable() and os.path.isdir(os.path.join(repo_root, ".git"))
+    if has_git:
+        ensurePublicOrigin(repo_root)
+        remote = _defaultRemote(repo_root)
+        branch = _currentBranch(repo_root)
+        result["remote_name"] = remote
+    else:
+        remote = "origin"
+        branch = PUBLIC_DEFAULT_BRANCH
+        result["remote_name"] = "(GitHub zip / HTTPS)"
     result["branch"] = branch
 
     remote_version = None
-    # 1) Anonymous HTTPS (no account) — preferred for the public repo.
+    # 1) Anonymous HTTPS (no account, no Git) — preferred for the public repo.
     https_ver, https_info = fetchPublicAppVersionViaHttps(branch)
     if https_ver:
         remote_version = https_ver
@@ -268,8 +347,8 @@ def checkRemoteAppVersion(
         if https_info and https_info != branch:
             result["branch"] = https_info
             branch = https_info
-    else:
-        # 2) Fall back to local git fetch + show (still public / no login needed).
+    elif has_git:
+        # 2) Fall back to local git fetch + show.
         ok, fetch_out = _fetchRemoteBranch(repo_root, remote, branch)
         if not ok:
             result["status"] = "fetch_failed"
@@ -295,6 +374,15 @@ def checkRemoteAppVersion(
 
         remote_version = parseAppVersionFromText(remote_file)
         result["source"] = "git"
+    else:
+        result["status"] = "fetch_failed"
+        result["message"] = (
+            "Could not read the latest version from GitHub "
+            f"({PUBLIC_REPO_OWNER}/{PUBLIC_REPO_NAME}).\n\n"
+            f"{https_info}\n\n"
+            "No Git install is required when the network can reach GitHub."
+        )
+        return result
 
     if not remote_version:
         result["status"] = "no_remote_version"
@@ -329,14 +417,20 @@ def checkRemoteAppVersion(
         return result
 
     result["status"] = "update_available"
+    how = (
+        "download the public zip (no Git install needed)"
+        if not (_gitAvailable() and os.path.isdir(os.path.join(repo_root, ".git")))
+        else "pull the latest public code"
+    )
     result["message"] = (
         f"A newer version is available on GitHub.\n\n"
         f"Current:  v{local_version}\n"
         f"GitHub:   v{remote_version}\n"
         f"Repo:     {PUBLIC_REPO_OWNER}/{PUBLIC_REPO_NAME}\n"
         f"Branch:   {branch}\n\n"
-        "Update now? This will close the app, pull the latest public code "
-        "(no login required), rebuild the .exe, and restart."
+        f"Update now? This will close the app, {how}, "
+        "rebuild the .exe (scripts\\build-user.bat), and restart.\n"
+        "No GitHub login is required."
     )
     return result
 
@@ -354,7 +448,9 @@ def launchUpdateAndRebuild(repo_root: str) -> Tuple[bool, str]:
     if not os.path.isfile(bat):
         return False, f"Missing update script:\n{bat}"
 
-    ensurePublicOrigin(repo_root)
+    # Only configure origin when Git + .git are available.
+    if _gitAvailable() and os.path.isdir(os.path.join(repo_root, ".git")):
+        ensurePublicOrigin(repo_root)
 
     try:
         if os.name == "nt":
