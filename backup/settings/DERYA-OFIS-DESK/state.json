@@ -1088,25 +1088,12 @@
             "I:\\",
             "H:\\Shared drives"
         ],
-        "column_widths": {
-            "name": 530,
-            "size": 86,
-            "type": 70,
-            "date_modified": 138
-        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1122,7 +1109,20 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        }
+        },
+        "column_widths": {
+            "name": 530,
+            "size": 86,
+            "type": 70,
+            "date_modified": 138
+        },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {}
     },
     "right_panel": {
         "current_path": "C:\\Users\\Derya",
@@ -1910,25 +1910,12 @@
             "E:\\Video\\New folder\\OT\\OT-Processed\\Blondie-Rose",
             "C:\\Users\\Derya"
         ],
-        "column_widths": {
-            "name": 575,
-            "size": 100,
-            "type": 100,
-            "date_modified": 138
-        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1944,6 +1931,19 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        }
+        },
+        "column_widths": {
+            "name": 575,
+            "size": 100,
+            "type": 100,
+            "date_modified": 138
+        },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {}
     }
 }
