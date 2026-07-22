@@ -10,6 +10,9 @@ REM
 REM Builds to dist_build\ first so a locked dist\TotalCommanderClone does not
 REM block rebuilds. On success, promotes to dist\ when the old folder is removable.
 REM If dist\ is locked after build, prompts to delete and complete the swap.
+REM
+REM Before building, compares APP_VERSION to the remote and pushes or pulls as needed
+REM (scripts\git-sync.ps1 -Action BuildSync). Pass skip-git to skip that step.
 REM ------------------------------------------------------------
 
 cd /d "%~dp0.."
@@ -23,12 +26,28 @@ set "DIST_STAGING=%DIST_BUILD_ROOT%\TotalCommanderClone"
 set "SPEC_FILE=TotalCommanderClone.spec"
 set "PYTHON_EXE="
 set "PYTHON_ARGS="
+set "SKIP_GIT_SYNC="
 
+:parse_build_args
+if "%~1"=="" goto build_args_done
 if /I "%~1"=="debug" (
     set "APP_EXE=TotalCommanderClone-debug.exe"
     set "DIST_STAGING=%DIST_BUILD_ROOT%\TotalCommanderClone-debug"
     set "SPEC_FILE=TotalCommanderClone-debug.spec"
     set "BUILD_DEBUG=1"
+    shift
+    goto parse_build_args
+)
+if /I "%~1"=="skip-git" (
+    set "SKIP_GIT_SYNC=1"
+    shift
+    goto parse_build_args
+)
+shift
+goto parse_build_args
+
+:build_args_done
+if defined BUILD_DEBUG (
     echo [INFO] Debug console build selected.
 )
 
@@ -64,6 +83,13 @@ if "%PYTHON_EXE%"=="" (
     exit /b 1
 )
 
+if not defined SKIP_GIT_SYNC (
+    call :sync_git_before_build
+    if errorlevel 1 exit /b 1
+) else (
+    echo [INFO] Skipping Git version sync ^(skip-git^).
+)
+
 echo [INFO] Installing dependencies (requirements.txt)...
 %PYTHON_EXE% %PYTHON_ARGS% -m pip install -r requirements.txt --quiet
 if %ERRORLEVEL% NEQ 0 (
@@ -87,6 +113,15 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 call :promote_build_output
+exit /b %ERRORLEVEL%
+
+REM ------------------------------------------------------------
+REM Subroutine: sync_git_before_build
+REM Purpose: Compare APP_VERSION to remote; push if ahead, pull if behind.
+REM ------------------------------------------------------------
+:sync_git_before_build
+echo [INFO] Checking Git version sync before build...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0git-sync.ps1" -Action BuildSync
 exit /b %ERRORLEVEL%
 
 REM ------------------------------------------------------------

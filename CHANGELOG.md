@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.43] - 2026-07-22
+
+### Added
+
+- **Build Git sync**: `scripts\build.bat` compares local `APP_VERSION` in `app_version.py` to the remote branch before building. If the local version is ahead it pushes first; if behind it pulls first. Uses saved GitHub credentials when available, or prompts for username and PAT. Pass `skip-git` to build without syncing (e.g. `scripts\build.bat skip-git`).
+
 ## [0.4.42] - 2026-06-18
 
 ### Fixed
