@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.56] - 2026-07-22
+
+### Added
+
+- **Folder Properties → Size**: The General tab shows total folder size (human-readable and bytes), plus file/subfolder counts from a background tree walk. Shows “Calculating…” until the scan finishes.
+
+## [0.4.55] - 2026-07-22
+
+### Changed
+
+- **Public update source**: Update checks use the public repo `https://github.com/derya-kromeka/total-commander-clone` (anonymous raw GitHub version first; no username/PAT). If `origin` is missing, it is added automatically for pull/rebuild.
+
+## [0.4.54] - 2026-07-22
+
+### Added
+
+- **Update from Git on startup**: After the window opens, the app compares its `APP_VERSION` to the remote branch’s `app_version.py` (hidden `git fetch`). If Git is newer, a dialog offers **Update now**, **Later**, or **Skip this version**. Update now closes the app and runs `scripts\update-and-rebuild.bat` (pull → `build.bat skip-git` → relaunch the new exe). Also available from **Help → Check for Updates…**. Toggle in **Settings → Check for updates from Git when the app starts**.
+
 ## [0.4.53] - 2026-07-22
 
 ### Fixed

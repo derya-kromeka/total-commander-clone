@@ -80,6 +80,15 @@ class SettingsDialog(QDialog):
         self._confirm_delete = QCheckBox("Ask before deleting files", self)
         form.addRow("Delete", self._confirm_delete)
 
+        self._check_updates = QCheckBox(
+            "Check for updates from Git when the app starts", self
+        )
+        self._check_updates.setToolTip(
+            "Compares this app’s version to APP_VERSION on the Git remote.\n"
+            "If a newer version exists, you can pull and rebuild."
+        )
+        form.addRow("Updates", self._check_updates)
+
         self._default_left_path = QLineEdit(self)
         form.addRow("Default left path", self._default_left_path)
 
@@ -146,6 +155,9 @@ class SettingsDialog(QDialog):
         self._ui_scale.setCurrentIndex(max(0, self._ui_scale.findData(cur_scale)))
         self._show_hidden.setChecked(self._settings.getSetting("show_hidden_files", False))
         self._confirm_delete.setChecked(self._settings.getSetting("confirm_delete", True))
+        self._check_updates.setChecked(
+            self._settings.getSetting("check_for_updates_on_startup", True)
+        )
         self._default_left_path.setText(self._settings.getSetting("default_left_path", "") or "")
         self._default_right_path.setText(self._settings.getSetting("default_right_path", "") or "")
         cur_mirror = self._settings.getSetting("mirror_mode", "to_other")
@@ -158,6 +170,7 @@ class SettingsDialog(QDialog):
             "ui_scale": self._ui_scale.currentData(),
             "show_hidden_files": self._show_hidden.isChecked(),
             "confirm_delete": self._confirm_delete.isChecked(),
+            "check_for_updates_on_startup": self._check_updates.isChecked(),
             "default_left_path": self._default_left_path.text().strip(),
             "default_right_path": self._default_right_path.text().strip(),
             "mirror_mode": self._mirror_mode.currentData(),

@@ -27,7 +27,7 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QSizePolicy,
 )
-from PyQt5.QtCore import QFileInfo, QMimeDatabase, Qt
+from PyQt5.QtCore import QFileInfo, QMimeDatabase, Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 
 from file_panel import formatFileSize
@@ -63,6 +63,53 @@ def _folder_item_count(path):
             return sum(1 for _ in it)
     except OSError:
         return None
+
+
+# ------------------------------------------------------------
+# Function: _folder_tree_stats
+# Purpose: Walk a folder tree; return (total_bytes, file_count, dir_count).
+# ------------------------------------------------------------
+def _folder_tree_stats(path):
+    total_bytes = 0
+    file_count = 0
+    dir_count = 0
+    try:
+        for root, dirs, files in os.walk(path):
+            dir_count += len(dirs)
+            for name in files:
+                file_count += 1
+                try:
+                    total_bytes += os.path.getsize(os.path.join(root, name))
+                except OSError:
+                    pass
+    except OSError:
+        return None
+    return total_bytes, file_count, dir_count
+
+
+# ------------------------------------------------------------
+# Class: FolderSizeWorker
+# Purpose: Compute folder tree size off the UI thread.
+# ------------------------------------------------------------
+class FolderSizeWorker(QThread):
+
+    finishedOk = pyqtSignal(int, int, int)  # bytes, files, dirs
+    failed = pyqtSignal(str)
+
+    def __init__(self, path, parent=None):
+        super().__init__(parent)
+        self._path = path
+
+    def run(self):
+        try:
+            stats = _folder_tree_stats(self._path)
+            if stats is None:
+                self.failed.emit("Could not read folder.")
+                return
+            total_bytes, file_count, dir_count = stats
+            self.finishedOk.emit(total_bytes, file_count, dir_count)
+        except Exception as exc:
+            self.failed.emit(str(exc))
 
 
 # ------------------------------------------------------------
@@ -156,6 +203,8 @@ class FilePropertiesDialog(QDialog):
         super().__init__(parent)
         self._entry = entry
         self._path = entry["full_path"]
+        self._folder_size_worker = None
+        self._size_label = None
         self.setWindowTitle(f"Properties — {entry['name']}")
         self.setMinimumSize(520, 440)
         self.resize(560, 480)
@@ -171,6 +220,9 @@ class FilePropertiesDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+        if entry.get("is_dir"):
+            self._startFolderSizeCalc()
 
     def _stat_safe(self):
         try:
@@ -214,12 +266,18 @@ class FilePropertiesDialog(QDialog):
 
         is_dir = self._entry["is_dir"]
         if is_dir:
+            self._size_label = QLabel("Calculating…")
+            self._size_label.setWordWrap(True)
+            form.addRow("Size:", self._size_label)
+
             cnt = _folder_item_count(self._path)
             if cnt is None:
-                size_text = "—"
+                contains_text = "—"
             else:
-                size_text = f"{cnt:,} item{'s' if cnt != 1 else ''} in this folder"
-            form.addRow("Contains:", QLabel(size_text))
+                contains_text = (
+                    f"{cnt:,} item{'s' if cnt != 1 else ''} in this folder"
+                )
+            form.addRow("Contains:", QLabel(contains_text))
         else:
             sz = self._entry["size"]
             human = formatFileSize(sz) if sz >= 0 else "—"
@@ -275,6 +333,37 @@ class FilePropertiesDialog(QDialog):
 
         return w
 
+    # --------------------------------------------------------
+    # Method: _startFolderSizeCalc
+    # Purpose: Walk the folder tree in the background and fill Size.
+    # --------------------------------------------------------
+    def _startFolderSizeCalc(self):
+        if self._size_label is None:
+            return
+        worker = FolderSizeWorker(self._path, self)
+        worker.finishedOk.connect(self._onFolderSizeReady)
+        worker.failed.connect(self._onFolderSizeFailed)
+        self._folder_size_worker = worker
+        worker.start()
+
+    def _onFolderSizeReady(self, total_bytes, file_count, dir_count):
+        if self._size_label is None:
+            return
+        human = formatFileSize(total_bytes)
+        exact = f"{total_bytes:,} bytes"
+        detail = (
+            f"{human}  ({exact}) — "
+            f"{file_count:,} file{'s' if file_count != 1 else ''}, "
+            f"{dir_count:,} subfolder{'s' if dir_count != 1 else ''}"
+        )
+        self._size_label.setText(detail)
+        self._size_label.setToolTip(detail)
+
+    def _onFolderSizeFailed(self, message):
+        if self._size_label is None:
+            return
+        self._size_label.setText(message or "—")
+
     def _buildDetailsTab(self):
         w = QWidget()
         v = QVBoxLayout(w)
@@ -306,7 +395,10 @@ class FilePropertiesDialog(QDialog):
             rows.append(("Link target", target))
 
         if st:
-            rows.append(("Size (bytes)", f"{st.st_size:,}"))
+            if self._entry["is_dir"]:
+                rows.append(("Size (bytes)", "See General tab (folder total)"))
+            else:
+                rows.append(("Size (bytes)", f"{st.st_size:,}"))
             try:
                 rows.append(("Mode (octal)", oct(stat.S_IMODE(st.st_mode))))
                 rows.append(("File mode", stat.filemode(st.st_mode)))

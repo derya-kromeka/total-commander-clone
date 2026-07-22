@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QFileDialog,
     QStyle, QTabWidget, QStackedWidget, QSizePolicy,
 )
-from PyQt5.QtCore import Qt, QUrl, QTimer, QRect, QSize, QEvent
+from PyQt5.QtCore import Qt, QUrl, QTimer, QRect, QSize, QEvent, QThread, pyqtSignal
 from PyQt5.QtGui import QKeySequence, QDesktopServices, QIcon
 
 from file_panel import FilePanel, DEFAULT_DATE_MODIFIED_FORMAT, resolve_date_modified_format_key
@@ -35,6 +35,39 @@ from app_version import APP_VERSION, APP_NAME, getWindowTitle
 from file_properties_dialog import showFileProperties
 from settings_dialog import SettingsDialog
 from theme import applyTheme, getUiMetrics, normalize_ui_scale, step_ui_scale, ui_scale_label
+from app_updater import checkRemoteAppVersion, launchUpdateAndRebuild
+
+
+# ------------------------------------------------------------
+# Class: UpdateCheckWorker
+# Purpose: Background Git fetch + APP_VERSION compare (no UI).
+# ------------------------------------------------------------
+class UpdateCheckWorker(QThread):
+
+    resultReady = pyqtSignal(dict)
+
+    def __init__(self, project_root, local_version, skip_version="", parent=None):
+        super().__init__(parent)
+        self._project_root = project_root
+        self._local_version = local_version
+        self._skip_version = skip_version or ""
+
+    def run(self):
+        try:
+            result = checkRemoteAppVersion(
+                self._local_version,
+                project_root=self._project_root,
+                skip_version=self._skip_version,
+            )
+        except Exception as exc:
+            result = {
+                "status": "error",
+                "local": self._local_version,
+                "remote": "",
+                "repo_root": "",
+                "message": str(exc),
+            }
+        self.resultReady.emit(result)
 
 
 # ------------------------------------------------------------
@@ -117,6 +150,8 @@ class FileManagerApp(QMainWindow):
         self._updateMirrorTooltips()
         self._state_restore_done = False
         self._post_show_layout_done = False
+        self._update_check_worker = None
+        self._update_check_manual = False
         self._show_home_path()
 
     # --------------------------------------------------------
@@ -194,6 +229,8 @@ class FileManagerApp(QMainWindow):
         if not self._post_show_layout_done:
             self._post_show_layout_done = True
             self._runPostShowLayout()
+        if self._settings.getSetting("check_for_updates_on_startup", True):
+            QTimer.singleShot(1800, lambda: self._startUpdateCheck(manual=False))
 
     def _runPostShowLayout(self):
         sizes = self._main_splitter.sizes()
@@ -415,6 +452,17 @@ class FileManagerApp(QMainWindow):
 
         # --- Help Menu ---
         help_menu = menu_bar.addMenu("&Help")
+        self._action_check_updates = QAction("Check for Updates...", self)
+        self._action_check_updates.setToolTip(
+            "Check for updates\n\n"
+            "Compare this version to APP_VERSION on the Git remote. "
+            "If newer, you can pull and rebuild."
+        )
+        self._action_check_updates.triggered.connect(
+            lambda: self._startUpdateCheck(manual=True)
+        )
+        help_menu.addAction(self._action_check_updates)
+        help_menu.addSeparator()
         self._action_about = QAction("About", self)
         self._action_about.setToolTip(
             "About\n\nShow the application name, version, and credits."
@@ -2171,6 +2219,119 @@ class FileManagerApp(QMainWindow):
             "Built with Python + PyQt5\n"
             "Dark theme inspired by Catppuccin Mocha"
         )
+
+    # --------------------------------------------------------
+    # Updates (Git remote APP_VERSION → pull + rebuild)
+    # --------------------------------------------------------
+    def _startUpdateCheck(self, manual=False):
+        if self._update_check_worker is not None and self._update_check_worker.isRunning():
+            if manual:
+                self._showStatus("Update check already running…")
+            return
+
+        self._update_check_manual = bool(manual)
+        if manual:
+            self._showStatus("Checking Git for updates…")
+
+        skip = ""
+        if not manual:
+            skip = self._settings.getSetting("skip_update_version", "") or ""
+
+        project_root = getattr(self._settings, "_project_root", None)
+        worker = UpdateCheckWorker(
+            project_root,
+            APP_VERSION,
+            skip_version=skip,
+            parent=self,
+        )
+        worker.resultReady.connect(self._onUpdateCheckResult)
+        self._update_check_worker = worker
+        worker.start()
+
+    def _onUpdateCheckResult(self, result):
+        manual = self._update_check_manual
+        status = (result or {}).get("status", "error")
+        message = (result or {}).get("message", "")
+        remote = (result or {}).get("remote", "")
+        repo_root = (result or {}).get("repo_root", "")
+
+        if status == "update_available":
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Information)
+            box.setWindowTitle("Update available")
+            box.setText(message)
+            update_btn = box.addButton("Update now", QMessageBox.AcceptRole)
+            later_btn = box.addButton("Later", QMessageBox.RejectRole)
+            skip_btn = box.addButton("Skip this version", QMessageBox.DestructiveRole)
+            box.setDefaultButton(later_btn)
+            box.exec_()
+            clicked = box.clickedButton()
+            if clicked is update_btn:
+                self._beginUpdateAndRebuild(repo_root)
+            elif clicked is skip_btn and remote:
+                self._settings.setSetting("skip_update_version", remote)
+                self._settings.saveSettings()
+                self._showStatus(f"Skipped update to v{remote}.")
+            else:
+                self._showStatus("Update postponed.")
+            return
+
+        if status == "skipped" and not manual:
+            return
+
+        if not manual:
+            # Stay quiet on automatic startup checks unless an update exists.
+            return
+
+        title = "Check for Updates"
+        if status == "up_to_date":
+            QMessageBox.information(self, title, message or "You are up to date.")
+        else:
+            QMessageBox.warning(
+                self,
+                title,
+                message or "Could not check for updates.",
+            )
+
+    def _beginUpdateAndRebuild(self, repo_root):
+        if not repo_root:
+            QMessageBox.warning(
+                self,
+                "Update",
+                "No Git project root was found for the update script.",
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Update and rebuild",
+            "The app will close now.\n\n"
+            "A console window will pull the latest Git changes, rebuild the "
+            ".exe (scripts\\build.bat), and start the new version.\n\n"
+            "Continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        # Clear skip so a failed update can prompt again next time.
+        self._settings.setSetting("skip_update_version", "")
+        try:
+            self._settings.saveAll()
+        except Exception:
+            try:
+                self._settings.saveSettings()
+            except Exception:
+                pass
+
+        ok, err = launchUpdateAndRebuild(repo_root)
+        if not ok:
+            QMessageBox.warning(self, "Update", err or "Could not start the update script.")
+            return
+
+        self._showStatus("Updater started — closing…")
+        QTimer.singleShot(200, QApplication.instance().quit)
 
     # --------------------------------------------------------
     # Utility

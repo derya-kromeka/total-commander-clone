@@ -64,6 +64,10 @@ DEFAULT_SETTINGS = {
     "mirror_mode": "to_other",
     # Date Modified column strftime preset key (see file_panel.DATE_MODIFIED_FORMATS).
     "date_modified_format": "yyyy_mm_dd_hm",
+    # Startup: compare APP_VERSION to Git remote; offer pull + rebuild.
+    "check_for_updates_on_startup": True,
+    # When user chooses "Skip this version", store that remote version string.
+    "skip_update_version": "",
 }
 
 

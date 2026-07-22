@@ -88,19 +88,19 @@
                 {
                     "type": "bookmark",
                     "name": "02 - AKTİF TEKLİFLER",
-                    "path": "H:\\Shared drives\\02 - AKTİF TEKLİFLER",
+                    "path": "H:\\Shared drives\\10 - SATIŞ",
                     "kind": "folder"
                 },
                 {
                     "type": "bookmark",
                     "name": "03 - AKTİF PROJELER",
-                    "path": "H:\\Shared drives\\03 - AKTİF PROJELER",
+                    "path": "H:\\Shared drives\\11 - PROJELER",
                     "kind": "folder"
                 },
                 {
                     "type": "bookmark",
                     "name": "08 - PAZARLAMA",
-                    "path": "H:\\Shared drives\\08 - PAZARLAMA",
+                    "path": "H:\\Shared drives\\15 - PAZARLAMA",
                     "kind": "folder"
                 },
                 {
@@ -152,7 +152,7 @@
     },
     "recent_paths": [],
     "left_panel": {
-        "current_path": "I:\\Shared drives\\01 - MUHASEBE VE FİNANS",
+        "current_path": "H:\\Shared drives",
         "history": [
             "C:\\Users\\Derya",
             "G:\\",
@@ -1069,14 +1069,44 @@
             "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 -  MUHASEBE\\2026\\sgk",
             "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 -  MUHASEBE\\2026",
             "I:\\Shared drives\\01 - MUHASEBE VE FİNANS\\04 -  MUHASEBE",
-            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS"
+            "I:\\Shared drives\\01 - MUHASEBE VE FİNANS",
+            "H:\\",
+            "I:\\",
+            "H:\\Shared drives",
+            "H:\\Shared drives",
+            "H:\\Shared drives",
+            "H:\\Shared drives\\10 - SATIŞ",
+            "H:\\Shared drives\\10 - SATIŞ",
+            "H:\\Shared drives",
+            "H:\\Shared drives\\10 - SATIŞ",
+            "H:\\Shared drives\\10 - SATIŞ",
+            "H:\\Shared drives",
+            "H:\\Shared drives\\11 - PROJELER",
+            "H:\\Shared drives",
+            "H:\\Shared drives\\15 - PAZARLAMA",
+            "H:\\Shared drives",
+            "I:\\",
+            "H:\\Shared drives"
         ],
+        "column_widths": {
+            "name": 530,
+            "size": 86,
+            "type": 70,
+            "date_modified": 138
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1092,20 +1122,7 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 530,
-            "size": 86,
-            "type": 70,
-            "date_modified": 138
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     },
     "right_panel": {
         "current_path": "C:\\Users\\Derya",
@@ -1855,14 +1872,63 @@
             "I:\\Shared drives\\90 - ENTOMAK APP",
             "I:\\Shared drives\\90 - ENTOMAK APP\\test-app",
             "I:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Database_Backups",
+            "C:\\Users\\Derya",
+            "F:\\",
+            "F:\\PARA",
+            "F:\\",
+            "F:\\Torrent",
+            "F:\\",
+            "E:\\",
+            "E:\\Video",
+            "E:\\",
+            "E:\\Downloads",
+            "E:\\Downloads\\Video",
+            "E:\\Downloads",
+            "E:\\",
+            "E:\\Video",
+            "E:\\",
+            "F:\\",
+            "C:\\",
+            "D:\\",
+            "E:\\",
+            "F:\\",
+            "G:\\",
+            "I:\\",
+            "E:\\",
+            "E:\\Video",
+            "E:\\Video\\New folder",
+            "E:\\Video\\New folder\\OT",
+            "E:\\Video\\New folder\\OT\\OT-Processed",
+            "E:\\Video\\New folder\\OT",
+            "E:\\Video\\New folder\\OT\\OT-To_BeProcessed",
+            "E:\\Video\\New folder\\OT",
+            "E:\\Video\\New folder\\OT\\OT-Processed",
+            "E:\\Video\\New folder\\OT\\OT-Processed\\Kara-D",
+            "E:\\Video\\New folder\\OT\\OT-Processed",
+            "E:\\Video\\New folder\\OT\\OT-Processed\\Blondie-Rose",
+            "E:\\Video\\New folder\\OT\\OT-Processed\\Blondie-Rose\\Blondie-Rose-20210906-OO-lfwpx3cYR3-mp4_hd_output",
+            "E:\\Video\\New folder\\OT\\OT-Processed\\Blondie-Rose",
             "C:\\Users\\Derya"
         ],
+        "column_widths": {
+            "name": 575,
+            "size": 100,
+            "type": 100,
+            "date_modified": 138
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1878,19 +1944,6 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 575,
-            "size": 100,
-            "type": 100,
-            "date_modified": 138
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     }
 }
