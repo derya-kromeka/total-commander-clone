@@ -996,6 +996,10 @@
             "E:\\Video\\New folder\\Esr-OT\\Abigail-B",
             "E:\\Video\\New folder\\Esr-OT",
             "C:\\Users\\Derya",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust\\scripts",
             "C:\\Users\\Derya"
         ],
         "column_visibility": {
@@ -1035,7 +1039,7 @@
         "locked_column_widths": {}
     },
     "right_panel": {
-        "current_path": "E:\\Video\\New folder\\OT\\OT-Processed",
+        "current_path": "C:\\Users\\Derya",
         "history": [
             "C:\\Users\\Derya",
             "C:\\Users\\Derya\\Downloads",
@@ -1764,7 +1768,8 @@
             "E:\\Video",
             "E:\\Video\\New folder",
             "E:\\Video\\New folder\\OT",
-            "E:\\Video\\New folder\\OT\\OT-Processed"
+            "E:\\Video\\New folder\\OT\\OT-Processed",
+            "C:\\Users\\Derya"
         ],
         "column_visibility": {
             "name": true,
@@ -1774,11 +1779,11 @@
         },
         "filter_mode": "contains",
         "filter_kind": "files",
-        "filter_text": "Group",
+        "filter_text": "",
         "filter_exclude_text": "",
-        "filter_extensions": "",
+        "filter_extensions": "mp4",
         "filter_words_combine_and": true,
-        "filter_include_subfolders": true,
+        "filter_include_subfolders": false,
         "filter_advanced": {
             "size_enabled": false,
             "size_min": null,
