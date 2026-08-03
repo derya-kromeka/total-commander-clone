@@ -152,7 +152,7 @@
     },
     "recent_paths": [],
     "left_panel": {
-        "current_path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+        "current_path": "C:\\Users\\Derya",
         "history": [
             "C:\\Users\\Derya",
             "G:\\",
@@ -1087,14 +1087,70 @@
             "H:\\Shared drives",
             "I:\\",
             "H:\\Shared drives",
-            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop"
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia\\Al Marai",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia\\Al Marai\\KT-1952-Third In-Motion W_L Line",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Abalioglu",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Abalioglu\\KT-1973 Abalıoğlu Maksutuşağı Kesimhane Paketleme",
+            "C:\\Users\\Derya\\Downloads",
+            "F:\\",
+            "E:\\",
+            "E:\\Video",
+            "E:\\Video\\New folder",
+            "E:\\Video\\New folder\\Esr",
+            "E:\\Video\\New folder",
+            "E:\\Video\\New folder\\Esr-OT",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts\\video_tools",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\total-commander-clone-main",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\total-commander-clone-main\\scripts",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\total-commander-clone-main",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\total-commander-clone-main\\scripts",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\total-commander-clone-main",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts\\git-scripts",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts\\video_tools",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts\\video_tools",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust\\scripts",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts\\video_tools",
+            "C:\\Users\\Derya"
         ],
+        "column_widths": {
+            "name": 530,
+            "size": 86,
+            "type": 70,
+            "date_modified": 138
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1110,20 +1166,7 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 530,
-            "size": 86,
-            "type": 70,
-            "date_modified": 138
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     },
     "right_panel": {
         "current_path": "C:\\Users\\Derya",
@@ -1944,14 +1987,39 @@
             "E:\\Video\\New folder\\Esr-OT\\Abigail-B\\Abigail-B-20170306-OT-V4nWxwkcjg-mp4_hd_TEST\\output",
             "E:\\Video\\New folder\\Esr-OT\\Abigail-B\\Abigail-B-20170306-OT-V4nWxwkcjg-mp4_hd_TEST",
             "E:\\Video\\New folder\\Esr-OT\\Abigail-B",
+            "C:\\Users\\Derya",
+            "E:\\",
+            "E:\\Video",
+            "E:\\Video\\New folder",
+            "E:\\Video\\New folder\\Esr-OT",
+            "E:\\Video\\New folder",
+            "E:\\Video\\New folder\\Esr",
+            "C:\\Users\\Derya",
+            "E:\\",
+            "E:\\Video",
+            "E:\\Video\\New folder",
+            "E:\\Video\\New folder\\Esr-OT",
             "C:\\Users\\Derya"
         ],
+        "column_widths": {
+            "name": 368,
+            "size": 100,
+            "type": 100,
+            "date_modified": 138
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1967,19 +2035,6 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 368,
-            "size": 100,
-            "type": 100,
-            "date_modified": 138
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     }
 }
