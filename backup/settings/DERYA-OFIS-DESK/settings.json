@@ -23,5 +23,6 @@
     "mirror_mode": "to_active",
     "date_modified_format": "yyyy_mm_dd_hm",
     "check_for_updates_on_startup": true,
-    "skip_update_version": ""
+    "skip_update_version": "",
+    "cache_recursive_scans": true
 }
