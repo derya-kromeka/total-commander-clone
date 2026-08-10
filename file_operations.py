@@ -166,11 +166,12 @@ class FileOperationWorker(QThread):
     # --------------------------------------------------------
     # Method: __init__
     # --------------------------------------------------------
-    def __init__(self, operation, file_paths, destination="", parent=None):
+    def __init__(self, operation, file_paths, destination="", parent=None, relative_paths=None):
         super().__init__(parent)
         self._operation = operation
         self._file_paths = file_paths
         self._destination = destination
+        self._relative_paths = list(relative_paths) if relative_paths else None
         self._cancelled = False
         self._errors = []
         self._conflict_mutex = QMutex()
@@ -226,6 +227,11 @@ class FileOperationWorker(QThread):
                 return
 
             file_name = os.path.basename(source_path)
+            rel = None
+            if self._relative_paths and i < len(self._relative_paths):
+                rel = self._relative_paths[i]
+            if rel:
+                file_name = os.path.basename(rel.replace("/", os.sep)) or file_name
             if use_byte_progress:
                 self._emitProgress(file_name, i, total, bytes_in_item=0)
             else:
@@ -234,9 +240,13 @@ class FileOperationWorker(QThread):
 
             try:
                 if self._operation == self.OPERATION_COPY:
-                    self._copyItem(source_path, self._destination, i, total)
+                    self._copyItem(
+                        source_path, self._destination, i, total, relative_path=rel
+                    )
                 elif self._operation == self.OPERATION_MOVE:
-                    self._moveItem(source_path, self._destination, i, total)
+                    self._moveItem(
+                        source_path, self._destination, i, total, relative_path=rel
+                    )
                 elif self._operation == self.OPERATION_DELETE:
                     self._deleteItem(source_path)
                     self._emitProgress(file_name, i + 1, total, percent_override=int(((i + 1) / total) * 100))
@@ -408,16 +418,36 @@ class FileOperationWorker(QThread):
         self._emitProgress(file_name, item_index + 1, total_items)
 
     # --------------------------------------------------------
+    # Method: _destPathForItem
+    # Purpose: Flat basename dest, or join(dest_dir, relative_path)
+    #          when keeping folder structure. Creates parent dirs.
+    # --------------------------------------------------------
+    def _destPathForItem(self, source, dest_dir, relative_path=None):
+        if relative_path:
+            rel = relative_path.replace("/", os.sep).strip()
+            parts = [p for p in rel.split(os.sep) if p and p != "."]
+            if parts and ".." not in parts:
+                dest_path = os.path.normpath(os.path.join(dest_dir, *parts))
+                parent = os.path.dirname(dest_path)
+                if parent:
+                    os.makedirs(parent, exist_ok=True)
+                return dest_path, parts[-1]
+        name = os.path.basename(source)
+        return os.path.join(dest_dir, name), name
+
+    # --------------------------------------------------------
     # Method: _copyItem
     # --------------------------------------------------------
-    def _copyItem(self, source, dest_dir, item_index, total_items):
-        name = os.path.basename(source)
-        dest_path = os.path.join(dest_dir, name)
+    def _copyItem(self, source, dest_dir, item_index, total_items, relative_path=None):
+        dest_path, name = self._destPathForItem(source, dest_dir, relative_path)
 
         if os.path.exists(dest_path):
             dest_path = self._askConflict(source, dest_path, name)
             if dest_path is None:
                 raise UserAbortError()
+            parent = os.path.dirname(dest_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
 
         if os.path.isdir(source):
             if os.path.exists(dest_path):
@@ -432,14 +462,16 @@ class FileOperationWorker(QThread):
     # --------------------------------------------------------
     # Method: _moveItem
     # --------------------------------------------------------
-    def _moveItem(self, source, dest_dir, item_index, total_items):
-        name = os.path.basename(source)
-        dest_path = os.path.join(dest_dir, name)
+    def _moveItem(self, source, dest_dir, item_index, total_items, relative_path=None):
+        dest_path, name = self._destPathForItem(source, dest_dir, relative_path)
 
         if os.path.exists(dest_path):
             dest_path = self._askConflict(source, dest_path, name)
             if dest_path is None:
                 raise UserAbortError()
+            parent = os.path.dirname(dest_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
 
         if _sameVolume(source, dest_path):
             if os.path.exists(dest_path):
@@ -447,6 +479,9 @@ class FileOperationWorker(QThread):
                     shutil.rmtree(dest_path)
                 else:
                     os.remove(dest_path)
+            parent = os.path.dirname(dest_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
             shutil.move(source, dest_path)
             self._finishItemProgress(source, name, item_index, total_items)
             return

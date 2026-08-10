@@ -881,6 +881,28 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     QFrame#centerPanel QPushButton:pressed {{
         background-color: {c['button_press']};
     }}
+    QFrame#centerPanel QToolButton#centerSpecialButton {{
+        background-color: {c['button']};
+        color: {c['subtext1']};
+        border: 1px solid {c['border']};
+        border-radius: 5px;
+        padding: 2px 1px;
+        font-size: {fs['center_glyph']}pt;
+        font-weight: bold;
+        min-height: {m['center_button_min_height']}px;
+    }}
+    QFrame#centerPanel QToolButton#centerSpecialButton:hover {{
+        background-color: {c['button_hover']};
+        color: {c['text']};
+        border-color: {c['active_border']};
+    }}
+    QFrame#centerPanel QToolButton#centerSpecialButton:pressed {{
+        background-color: {c['button_press']};
+    }}
+    QFrame#centerPanel QToolButton#centerSpecialButton::menu-indicator {{
+        image: none;
+        width: 0;
+    }}
     QFrame#centerPanel QLabel {{
         color: {c['overlay0']};
         font-size: {fs['tiny']}pt;

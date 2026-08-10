@@ -2208,6 +2208,51 @@ class FilePanel(QWidget):
         return [e["full_path"] for e in self.selectedEntries()]
 
     # --------------------------------------------------------
+    # Method: selectedTransferSpecs
+    # Purpose: Full path + relative path (from panel root) for
+    #          each selected entry. In Subfolders mode, entry
+    #          "name" is already relative; otherwise basename.
+    # Output: list of {"full_path", "relative_path"} or error str.
+    # --------------------------------------------------------
+    def selectedTransferSpecs(self):
+        root = self.currentPath()
+        if not root:
+            return [], "No folder open in this panel."
+        root_norm = os.path.normcase(os.path.normpath(root))
+        specs = []
+        for entry in self.selectedEntries():
+            full = entry.get("full_path") or ""
+            if not full:
+                continue
+            full_norm = os.path.normpath(full)
+            name = (entry.get("name") or "").replace("/", os.sep).strip()
+            if self._source_model.isRecursive() and name:
+                rel = name
+            else:
+                try:
+                    rel = os.path.relpath(full_norm, root)
+                except ValueError:
+                    return [], f"Path is outside the panel folder:\n{full}"
+                rel = rel.replace("/", os.sep)
+            parts = [p for p in rel.split(os.sep) if p and p != "."]
+            if not parts or ".." in parts or rel in (".", ""):
+                return [], f"Invalid relative path for:\n{full}"
+            # Ensure the absolute path is under the search root.
+            try:
+                common = os.path.commonpath([root_norm, os.path.normcase(full_norm)])
+            except ValueError:
+                return [], f"Path is outside the panel folder:\n{full}"
+            if common != root_norm:
+                return [], f"Path is outside the panel folder:\n{full}"
+            specs.append({
+                "full_path": full_norm,
+                "relative_path": os.path.join(*parts),
+            })
+        if not specs:
+            return [], "No files selected."
+        return specs, ""
+
+    # --------------------------------------------------------
     # Navigation Methods
     # --------------------------------------------------------
     def goBack(self):

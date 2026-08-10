@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
     QFrame, QHBoxLayout, QPushButton, QVBoxLayout, QWidget,
     QMenu, QMessageBox, QInputDialog, QApplication, QLabel,
     QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QFileDialog,
-    QStyle, QTabWidget, QStackedWidget, QSizePolicy,
+    QStyle, QTabWidget, QStackedWidget, QSizePolicy, QToolButton,
 )
 from PyQt5.QtCore import Qt, QUrl, QTimer, QRect, QSize, QEvent, QThread, pyqtSignal
 from PyQt5.QtGui import QKeySequence, QDesktopServices, QIcon
@@ -838,6 +838,47 @@ class FileManagerApp(QMainWindow):
 
         layout.addSpacing(8)
 
+        self._btn_special = QToolButton()
+        self._btn_special.setObjectName("centerSpecialButton")
+        self._btn_special.setPopupMode(QToolButton.InstantPopup)
+        self._btn_special.setFocusPolicy(Qt.NoFocus)
+        self._btn_special.setToolTip(
+            "Special transfers\n\n"
+            "Copy or move while keeping folder structure relative to the "
+            "active panel’s current folder (search root). Also copy relative "
+            "or full paths to the clipboard."
+        )
+        special_menu = QMenu(self._btn_special)
+        act_copy_struct = special_menu.addAction("Copy keeping structure")
+        act_copy_struct.setToolTip(
+            "Copy selected items to the other panel, recreating paths under "
+            "the active panel’s current folder."
+        )
+        act_copy_struct.triggered.connect(self._onSpecialCopyKeepStructure)
+        act_move_struct = special_menu.addAction("Move keeping structure")
+        act_move_struct.setToolTip(
+            "Move selected items to the other panel, recreating paths under "
+            "the active panel’s current folder."
+        )
+        act_move_struct.triggered.connect(self._onSpecialMoveKeepStructure)
+        special_menu.addSeparator()
+        act_rel_paths = special_menu.addAction("Copy relative paths")
+        act_rel_paths.setToolTip(
+            "Copy selected paths relative to the active panel’s current folder."
+        )
+        act_rel_paths.triggered.connect(self._onSpecialCopyRelativePaths)
+        act_full_paths = special_menu.addAction("Copy full paths")
+        act_full_paths.setToolTip("Copy absolute paths of the selection.")
+        act_full_paths.triggered.connect(self._onSpecialCopyFullPaths)
+        self._btn_special.setMenu(special_menu)
+        layout.addWidget(self._btn_special)
+
+        self._lbl_special = QLabel("SPECIAL")
+        self._lbl_special.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self._lbl_special)
+
+        layout.addSpacing(8)
+
         self._btn_swap = QPushButton("\u21C4")
         self._btn_swap.setToolTip(
             "Swap panes\n\n"
@@ -874,26 +915,29 @@ class FileManagerApp(QMainWindow):
     # --------------------------------------------------------
     def _updateDirectionButtons(self):
         if self._active_panel == self._left_panel:
-            self._btn_copy_dir.setText("\u27A1")
-            self._btn_move_dir.setText("\u27A1")
-            self._btn_copy_dir.setToolTip(
-                "Copy to other panel\n\n"
-                "Copy selected items to the right panel. Flow: Left \u2192 Right. Shortcut: F6."
-            )
-            self._btn_move_dir.setToolTip(
-                "Move to other panel\n\n"
-                "Move selected items to the right panel. Flow: Left \u2192 Right. Shortcut: F7."
-            )
+            arrow = "\u27A1"
+            flow = "Left \u2192 Right"
+            other = "right"
         else:
-            self._btn_copy_dir.setText("\u2B05")
-            self._btn_move_dir.setText("\u2B05")
-            self._btn_copy_dir.setToolTip(
-                "Copy to other panel\n\n"
-                "Copy selected items to the left panel. Flow: Right \u2192 Left. Shortcut: F6."
-            )
-            self._btn_move_dir.setToolTip(
-                "Move to other panel\n\n"
-                "Move selected items to the left panel. Flow: Right \u2192 Left. Shortcut: F7."
+            arrow = "\u2B05"
+            flow = "Right \u2192 Left"
+            other = "left"
+        self._btn_copy_dir.setText(arrow)
+        self._btn_move_dir.setText(arrow)
+        self._btn_copy_dir.setToolTip(
+            "Copy to other panel\n\n"
+            f"Copy selected items to the {other} panel. Flow: {flow}. Shortcut: F6."
+        )
+        self._btn_move_dir.setToolTip(
+            "Move to other panel\n\n"
+            f"Move selected items to the {other} panel. Flow: {flow}. Shortcut: F7."
+        )
+        if hasattr(self, "_btn_special"):
+            self._btn_special.setText(arrow)
+            self._btn_special.setToolTip(
+                "Special transfers\n\n"
+                f"Copy or move keeping structure to the {other} panel "
+                f"(Flow: {flow}), or copy relative/full paths to the clipboard."
             )
 
     # --------------------------------------------------------
@@ -1181,6 +1225,79 @@ class FileManagerApp(QMainWindow):
 
         self._transfer_queue.enqueueMove(paths, dest)
         self._showStatus(f"Move queued ({len(paths)} item(s)).")
+
+    # --------------------------------------------------------
+    # Special transfers (keep structure relative to search root)
+    # --------------------------------------------------------
+    def _prepareStructureTransfer(self, verb):
+        """Return (paths, rels, dest) or (None, None, None) after UI feedback."""
+        if not self._active_panel:
+            return None, None, None
+        specs, err = self._active_panel.selectedTransferSpecs()
+        if err or not specs:
+            self._showStatus(err or "No files selected.")
+            if err and "outside" in err.lower():
+                QMessageBox.warning(self, f"{verb} keeping structure", err)
+            return None, None, None
+        dest = self._getInactivePanel().currentPath()
+        if not dest:
+            self._showStatus("No destination panel.")
+            return None, None, None
+        root = self._active_panel.currentPath() or ""
+        paths = [s["full_path"] for s in specs]
+        rels = [s["relative_path"] for s in specs]
+        sample = rels[0]
+        extra = f"\n… and {len(rels) - 1} more" if len(rels) > 1 else ""
+        reply = QMessageBox.question(
+            self,
+            f"{verb} keeping structure",
+            f"{verb} {len(paths)} item(s) to the other panel while keeping "
+            f"paths relative to:\n{root}\n\n"
+            f"Example:\n  {sample}\n"
+            f"  → {os.path.join(dest, sample)}{extra}\n\n"
+            "Only selected items are transferred; unmatched siblings are not copied.\n"
+            "Continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            return None, None, None
+        return paths, rels, dest
+
+    def _onSpecialCopyKeepStructure(self):
+        paths, rels, dest = self._prepareStructureTransfer("Copy")
+        if not paths:
+            return
+        self._transfer_queue.enqueueCopy(paths, dest, relative_paths=rels)
+        self._showStatus(f"Copy (structure) queued ({len(paths)} item(s)).")
+
+    def _onSpecialMoveKeepStructure(self):
+        paths, rels, dest = self._prepareStructureTransfer("Move")
+        if not paths:
+            return
+        self._transfer_queue.enqueueMove(paths, dest, relative_paths=rels)
+        self._showStatus(f"Move (structure) queued ({len(paths)} item(s)).")
+
+    def _onSpecialCopyRelativePaths(self):
+        if not self._active_panel:
+            return
+        specs, err = self._active_panel.selectedTransferSpecs()
+        if err or not specs:
+            self._showStatus(err or "No files selected.")
+            return
+        text = "\n".join(s["relative_path"] for s in specs)
+        QApplication.clipboard().setText(text)
+        self._showStatus(f"Copied {len(specs)} relative path(s).")
+
+    def _onSpecialCopyFullPaths(self):
+        if not self._active_panel:
+            return
+        paths = self._active_panel.selectedPaths()
+        if not paths:
+            self._showStatus("No files selected.")
+            return
+        QApplication.clipboard().setText("\n".join(paths))
+        self._showStatus(f"Copied {len(paths)} full path(s).")
 
     def _onDelete(self):
         if not self._active_panel or self._active_panel.isRenaming():
@@ -1984,6 +2101,20 @@ class FileManagerApp(QMainWindow):
                 "Move to other panel\n\nMove selected items to the opposite panel. Shortcut: F7."
             )
             move_other_action.triggered.connect(self._onMoveToOther)
+
+            copy_struct_action = menu.addAction("Copy Keeping Structure…")
+            copy_struct_action.setToolTip(
+                "Copy keeping structure\n\n"
+                "Copy to the other panel while recreating paths under this panel’s folder."
+            )
+            copy_struct_action.triggered.connect(self._onSpecialCopyKeepStructure)
+
+            move_struct_action = menu.addAction("Move Keeping Structure…")
+            move_struct_action.setToolTip(
+                "Move keeping structure\n\n"
+                "Move to the other panel while recreating paths under this panel’s folder."
+            )
+            move_struct_action.triggered.connect(self._onSpecialMoveKeepStructure)
 
             menu.addSeparator()
 

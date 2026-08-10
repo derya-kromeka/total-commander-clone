@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.60] - 2026-08-10
+
+### Added
+
+- **SPECIAL center button**: Copy/Move **keeping structure** relative to the active panel’s current folder (search root), so recursive filter hits like `Archive\Alexa\…\output` land under `Duplicates\Alexa\…\output` instead of flattening. Also **Copy relative paths** / **Copy full paths**. Same structure actions in the file context menu. Normal F6/F7 stay flat.
+
 ## [0.4.59] - 2026-08-10
 
 ### Added

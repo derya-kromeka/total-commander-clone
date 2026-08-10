@@ -152,7 +152,7 @@
     },
     "recent_paths": [],
     "left_panel": {
-        "current_path": "C:\\Users\\Derya",
+        "current_path": "E:\\Video\\New folder\\OT\\Duplicates",
         "history": [
             "C:\\Users\\Derya",
             "G:\\",
@@ -1130,14 +1130,30 @@
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts",
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts\\video_tools",
-            "C:\\Users\\Derya"
+            "C:\\Users\\Derya",
+            "E:\\Video\\New folder\\OT\\Archive",
+            "E:\\Video\\New folder\\OT",
+            "E:\\Video\\New folder\\OT\\Duplicates"
         ],
+        "column_widths": {
+            "name": 530,
+            "size": 86,
+            "type": 70,
+            "date_modified": 138
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1153,23 +1169,10 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 530,
-            "size": 86,
-            "type": 70,
-            "date_modified": 138
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     },
     "right_panel": {
-        "current_path": "C:\\Users\\Derya",
+        "current_path": "E:\\Video\\New folder\\OT\\Archive",
         "history": [
             "C:\\Users\\Derya",
             "C:\\Users\\Derya\\Downloads",
@@ -1999,21 +2002,40 @@
             "E:\\Video",
             "E:\\Video\\New folder",
             "E:\\Video\\New folder\\Esr-OT",
-            "C:\\Users\\Derya"
+            "C:\\Users\\Derya",
+            "F:\\",
+            "E:\\",
+            "E:\\Video",
+            "E:\\Video\\New folder",
+            "E:\\Video\\New folder\\OT",
+            "E:\\Video\\New folder\\OT\\Archive"
         ],
+        "column_widths": {
+            "name": 368,
+            "size": 100,
+            "type": 100,
+            "date_modified": 138
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
-        "filter_kind": "all",
-        "filter_text": "",
+        "filter_kind": "dirs",
+        "filter_text": "output",
         "filter_exclude_text": "",
         "filter_extensions": "",
         "filter_words_combine_and": true,
-        "filter_include_subfolders": false,
+        "filter_include_subfolders": true,
         "filter_advanced": {
             "size_enabled": false,
             "size_min": null,
@@ -2022,19 +2044,6 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 368,
-            "size": 100,
-            "type": 100,
-            "date_modified": 138
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     }
 }

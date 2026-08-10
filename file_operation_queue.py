@@ -48,6 +48,7 @@ class FileOperationTask:
     detail: str = ""
     message: str = ""
     clear_clipboard_on_success: bool = False
+    relative_paths: Optional[List[str]] = None
     on_success: Optional[Callable[[], None]] = field(default=None, repr=False)
 
     def summaryLabel(self):
@@ -59,6 +60,8 @@ class FileOperationTask:
             FileOperationWorker.OPERATION_DELETE: "Delete",
         }
         op = op_names.get(self.operation, self.operation.capitalize())
+        if self.relative_paths:
+            op = f"{op} (structure)"
         if self.operation == FileOperationWorker.OPERATION_DELETE:
             return f"{op} {count} item(s)"
         dest = self.destination or ""
@@ -109,9 +112,13 @@ class FileOperationQueue(QObject):
             for t in self._tasks
         )
 
-    def enqueueCopy(self, file_paths, destination, on_success=None):
+    def enqueueCopy(self, file_paths, destination, on_success=None, relative_paths=None):
         return self._enqueue(
-            FileOperationWorker.OPERATION_COPY, file_paths, destination, on_success
+            FileOperationWorker.OPERATION_COPY,
+            file_paths,
+            destination,
+            on_success,
+            relative_paths=relative_paths,
         )
 
     def enqueueMove(
@@ -120,6 +127,7 @@ class FileOperationQueue(QObject):
         destination,
         on_success=None,
         clear_clipboard_on_success=False,
+        relative_paths=None,
     ):
         return self._enqueue(
             FileOperationWorker.OPERATION_MOVE,
@@ -127,6 +135,7 @@ class FileOperationQueue(QObject):
             destination,
             on_success,
             clear_clipboard_on_success=clear_clipboard_on_success,
+            relative_paths=relative_paths,
         )
 
     def enqueueDelete(self, file_paths):
@@ -172,9 +181,15 @@ class FileOperationQueue(QObject):
         destination,
         on_success=None,
         clear_clipboard_on_success=False,
+        relative_paths=None,
     ):
         if not file_paths:
             return None
+        rels = None
+        if relative_paths is not None:
+            rels = list(relative_paths)
+            if len(rels) != len(file_paths):
+                rels = None
         task = FileOperationTask(
             id=str(uuid.uuid4()),
             operation=operation,
@@ -182,6 +197,7 @@ class FileOperationQueue(QObject):
             destination=destination or "",
             on_success=on_success,
             clear_clipboard_on_success=clear_clipboard_on_success,
+            relative_paths=rels,
         )
         self._tasks.append(task)
         self.taskAdded.emit(task)
@@ -206,7 +222,11 @@ class FileOperationQueue(QObject):
         self.taskUpdated.emit(task)
 
         self._worker = FileOperationWorker(
-            task.operation, task.source_paths, task.destination, self
+            task.operation,
+            task.source_paths,
+            task.destination,
+            self,
+            relative_paths=task.relative_paths,
         )
         self._worker.progressChanged.connect(self._onProgress)
         self._worker.operationFinished.connect(self._onFinished)
