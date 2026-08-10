@@ -397,12 +397,20 @@ class FileSystemModel(QAbstractTableModel):
         self._icon_provider = QFileIconProvider()
         self._scan_generation = 0
         self._date_modified_format_key = DEFAULT_DATE_MODIFIED_FORMAT
+        self._quiet_scan = False
+        self._listing_from_cache = False
 
     # --------------------------------------------------------
     # Method: showHiddenFiles
     # --------------------------------------------------------
     def showHiddenFiles(self):
         return self._show_hidden
+
+    def listingFromCache(self):
+        return bool(self._listing_from_cache)
+
+    def quietScanPending(self):
+        return bool(self._quiet_scan)
 
     # --------------------------------------------------------
     # Method: applyRecursiveScanResult
@@ -417,6 +425,131 @@ class FileSystemModel(QAbstractTableModel):
             key=lambda e: (not e["is_dir"], natural_sort_key(e["name"]))
         )
         self.endResetModel()
+        self._listing_from_cache = False
+        self._quiet_scan = False
+        self._storeScanCache()
+
+    def _storeScanCache(self):
+        if not self._recursive or not self._current_path:
+            return
+        try:
+            from scan_cache import putScanCache
+
+            putScanCache(self._current_path, self._show_hidden, self._entries)
+        except Exception:
+            pass
+
+    def _syncScanCacheAfterMutation(self):
+        if not self._recursive or not self._current_path:
+            return
+        try:
+            from scan_cache import updateScanCacheFromEntries
+
+            updateScanCacheFromEntries(
+                self._current_path, self._show_hidden, self._entries
+            )
+        except Exception:
+            pass
+
+    # --------------------------------------------------------
+    # Method: removeEntriesByPaths
+    # Purpose: Drop entries whose full_path equals or is under paths.
+    # --------------------------------------------------------
+    def removeEntriesByPaths(self, paths):
+        if not paths or not self._entries:
+            return 0
+        norms = []
+        for p in paths:
+            if not p:
+                continue
+            norms.append(os.path.normcase(os.path.normpath(p)))
+        if not norms:
+            return 0
+
+        def should_remove(full):
+            fp = os.path.normcase(os.path.normpath(full))
+            for n in norms:
+                if fp == n or fp.startswith(n + os.sep):
+                    return True
+            return False
+
+        kept = [e for e in self._entries if not should_remove(e.get("full_path") or "")]
+        removed = len(self._entries) - len(kept)
+        if removed <= 0:
+            return 0
+        self.beginResetModel()
+        self._entries = kept
+        self.endResetModel()
+        self._listing_from_cache = False
+        self._syncScanCacheAfterMutation()
+        return removed
+
+    # --------------------------------------------------------
+    # Method: upsertEntryFromPath
+    # Purpose: Stat one path and insert/update its listing row.
+    # Output: True on success, False if stat/path fails (caller may refresh).
+    # --------------------------------------------------------
+    def upsertEntryFromPath(self, full_path, relative_path=None):
+        if not self._current_path or not full_path:
+            return False
+        full_path = os.path.normpath(full_path)
+        root = os.path.normpath(self._current_path)
+        try:
+            st = os.stat(full_path)
+        except OSError:
+            return False
+        is_dir = stat.S_ISDIR(st.st_mode)
+        size = -1 if is_dir else st.st_size
+        mod_time = st.st_mtime
+        if relative_path:
+            display = relative_path.replace("/", os.sep).strip()
+            parts = [p for p in display.split(os.sep) if p and p != "."]
+            if not parts or ".." in parts:
+                return False
+            display = os.path.join(*parts)
+        else:
+            try:
+                display = os.path.relpath(full_path, root)
+            except ValueError:
+                return False
+            display = display.replace("/", os.sep)
+            if display in (".", "") or display.startswith(".." + os.sep) or display == "..":
+                return False
+        name_key = os.path.basename(full_path)
+        if self._skip_hidden_stat(full_path, name_key):
+            # Hidden and currently hidden — ensure absent from list.
+            self.removeEntriesByPaths([full_path])
+            return True
+
+        full_norm = os.path.normcase(full_path)
+        updated = False
+        for entry in self._entries:
+            if os.path.normcase(os.path.normpath(entry.get("full_path") or "")) == full_norm:
+                entry["name"] = display
+                entry["size"] = size
+                entry["type"] = getFileTypeDescription(full_path, is_dir)
+                entry["mod_time"] = mod_time
+                entry["is_dir"] = is_dir
+                entry["full_path"] = full_path
+                updated = True
+                break
+        if not updated:
+            self._entries.append({
+                "name": display,
+                "size": size,
+                "type": getFileTypeDescription(full_path, is_dir),
+                "mod_time": mod_time,
+                "is_dir": is_dir,
+                "full_path": full_path,
+            })
+        self.beginResetModel()
+        self._entries.sort(
+            key=lambda e: (not e["is_dir"], natural_sort_key(e["name"]))
+        )
+        self.endResetModel()
+        self._listing_from_cache = False
+        self._syncScanCacheAfterMutation()
+        return True
 
     # --------------------------------------------------------
     # Method: setRecursive
@@ -428,7 +561,7 @@ class FileSystemModel(QAbstractTableModel):
             return
         self._recursive = recursive
         if self._current_path:
-            self.loadDirectory(self._current_path)
+            self.loadDirectory(self._current_path, force_rescan=True)
 
     def isRecursive(self):
         return self._recursive
@@ -462,7 +595,7 @@ class FileSystemModel(QAbstractTableModel):
     def setShowHidden(self, show):
         self._show_hidden = show
         if self._current_path:
-            self.loadDirectory(self._current_path)
+            self.loadDirectory(self._current_path, force_rescan=True)
 
     def _skip_hidden_stat(self, full_path, name):
         if self._show_hidden:
@@ -493,12 +626,15 @@ class FileSystemModel(QAbstractTableModel):
     # --------------------------------------------------------
     # Method: loadDirectory
     # Purpose: Scans the given directory and populates the model.
-    # Recursive mode runs the walk on a worker thread (see FilePanel).
-    # Input: path (str) - The directory to load.
+    # Recursive mode uses session/disk cache when possible, then
+    # optionally quietly re-scans in the background.
+    # Input: path (str), force_rescan (bool) - skip cache.
     # --------------------------------------------------------
-    def loadDirectory(self, path):
+    def loadDirectory(self, path, force_rescan=False):
         path = os.path.normpath(path)
         self.recursiveScanAbortRequested.emit()
+        self._quiet_scan = False
+        self._listing_from_cache = False
 
         if not self._recursive:
             self._loadDirectoryFlatSync(path)
@@ -506,8 +642,27 @@ class FileSystemModel(QAbstractTableModel):
 
         self._scan_generation += 1
         gen = self._scan_generation
-        self.beginResetModel()
         self._current_path = path
+
+        if not force_rescan:
+            try:
+                from scan_cache import getScanCache
+
+                cached = getScanCache(path, self._show_hidden)
+            except Exception:
+                cached = None
+            if cached is not None:
+                self.beginResetModel()
+                self._entries = list(cached)
+                self._entries.sort(
+                    key=lambda e: (not e["is_dir"], natural_sort_key(e["name"]))
+                )
+                self.endResetModel()
+                self._listing_from_cache = True
+                self._quiet_scan = False
+                return
+
+        self.beginResetModel()
         self._entries = []
         self.endResetModel()
         self.recursiveScanRequested.emit(path, gen)
@@ -1528,8 +1683,9 @@ class FilePanel(QWidget):
         self._filter_banner_refresh_btn.setDefault(False)
         self._filter_banner_refresh_btn.setToolTip(
             "Refresh search\n\n"
-            "Reload the current folder (and re-scan subfolders when that option is on), "
-            "then re-apply all active filter rules."
+            "Force a full re-scan of the current folder (and subfolders when that "
+            "option is on), then re-apply all active filter rules. Use this if files "
+            "changed outside the app; normal copy/move updates the list without a full scan."
         )
         self._filter_banner_refresh_btn.clicked.connect(self.refreshFilterSearch)
         self._filter_banner_btn = QPushButton("\u2715 Clear filter")
@@ -2146,13 +2302,139 @@ class FilePanel(QWidget):
 
     # --------------------------------------------------------
     # Method: refresh
-    # Purpose: Reloads the current directory.
+    # Purpose: Reloads the current directory. force_rescan skips
+    #          the recursive scan cache (used by F5 / banner Refresh).
     # --------------------------------------------------------
-    def refresh(self):
+    def refresh(self, force_rescan=True):
         current = self._source_model.currentPath()
         if current:
-            self._source_model.loadDirectory(current)
+            # Invalidate cache when the user explicitly forces a rescan.
+            if force_rescan and self._source_model.isRecursive():
+                try:
+                    from scan_cache import invalidateScanCache
+
+                    invalidateScanCache(
+                        current, self._source_model.showHiddenFiles()
+                    )
+                except Exception:
+                    pass
+            self._source_model.loadDirectory(current, force_rescan=force_rescan)
             self._updateStatusLabel()
+
+    # --------------------------------------------------------
+    # Method: applyTransferResult
+    # Purpose: After a successful copy/move/delete, patch the
+    #          in-memory listing when possible (esp. Subfolders).
+    # Output: "updated" | "unaffected" | "fallback"
+    # --------------------------------------------------------
+    def applyTransferResult(self, task):
+        from file_operations import FileOperationWorker
+
+        if task is None:
+            return "fallback"
+        op = getattr(task, "operation", "")
+        sources = list(getattr(task, "source_paths", None) or [])
+        dest_dir = getattr(task, "destination", "") or ""
+        rels = getattr(task, "relative_paths", None)
+        root = self.currentPath()
+        if not root:
+            return "unaffected"
+
+        root_norm = os.path.normpath(root)
+
+        def under_root(path):
+            if not path:
+                return False
+            p = os.path.normcase(os.path.normpath(path))
+            r = os.path.normcase(root_norm)
+            return p == r or p.startswith(r + os.sep)
+
+        dest_paths = []
+        if dest_dir and op in (
+            FileOperationWorker.OPERATION_COPY,
+            FileOperationWorker.OPERATION_MOVE,
+        ):
+            if rels and len(rels) == len(sources):
+                dest_paths = [
+                    os.path.normpath(os.path.join(dest_dir, r)) for r in rels
+                ]
+            else:
+                dest_paths = [
+                    os.path.normpath(os.path.join(dest_dir, os.path.basename(s)))
+                    for s in sources
+                ]
+
+        model = self._source_model
+        if model.isRecursive():
+            touched = False
+            if op in (
+                FileOperationWorker.OPERATION_MOVE,
+                FileOperationWorker.OPERATION_DELETE,
+            ):
+                remove_list = [s for s in sources if under_root(s)]
+                if remove_list:
+                    model.removeEntriesByPaths(remove_list)
+                    touched = True
+            if op in (
+                FileOperationWorker.OPERATION_COPY,
+                FileOperationWorker.OPERATION_MOVE,
+            ):
+                for i, dp in enumerate(dest_paths):
+                    if not under_root(dp):
+                        continue
+                    if not os.path.exists(dp):
+                        return "fallback"
+                    rel = None
+                    if rels and i < len(rels):
+                        # Relative to this panel root when dest is under root.
+                        try:
+                            rel = os.path.relpath(dp, root_norm).replace("/", os.sep)
+                        except ValueError:
+                            rel = rels[i]
+                    if not model.upsertEntryFromPath(dp, relative_path=rel):
+                        return "fallback"
+                    touched = True
+            if not touched:
+                related = any(under_root(s) for s in sources)
+                related = related or (
+                    dest_dir and (under_root(dest_dir) or under_root(root_norm))
+                )
+                related = related or any(under_root(d) for d in dest_paths)
+                if related:
+                    return "fallback"
+                return "unaffected"
+            self._proxy_model.invalidateFilter()
+            self._updateFilterUi()
+            return "updated"
+
+        # Flat listing: cheap listdir refresh when this folder is involved.
+        root_case = os.path.normcase(root_norm)
+        dest_case = os.path.normcase(os.path.normpath(dest_dir)) if dest_dir else ""
+        if dest_case and dest_case == root_case:
+            self.refresh(force_rescan=False)
+            return "updated"
+        if op in (
+            FileOperationWorker.OPERATION_MOVE,
+            FileOperationWorker.OPERATION_DELETE,
+        ):
+            for s in sources:
+                try:
+                    parent = os.path.normcase(os.path.normpath(os.path.dirname(s)))
+                except Exception:
+                    continue
+                if parent == root_case:
+                    self.refresh(force_rescan=False)
+                    return "updated"
+        # Structure copy into this folder creates new top-level children.
+        if dest_case == root_case or (
+            dest_paths and any(
+                os.path.normcase(os.path.normpath(os.path.dirname(d))) == root_case
+                for d in dest_paths
+            )
+        ):
+            self.refresh(force_rescan=False)
+            return "updated"
+        return "unaffected"
 
     # --------------------------------------------------------
     # Method: createNewFolder
@@ -2870,7 +3152,7 @@ class FilePanel(QWidget):
     #          proxy filter rules.
     # --------------------------------------------------------
     def refreshFilterSearch(self):
-        self.refresh()
+        self.refresh(force_rescan=True)
         self._proxy_model.invalidateFilter()
         self._updateFilterUi()
 
@@ -3080,7 +3362,12 @@ class FilePanel(QWidget):
             else:
                 text = f"Filter on \u00b7 {text}"
         if self._source_model.isRecursive():
-            text += "  \u00b7  Subfolders scan"
+            if self._source_model.listingFromCache():
+                text += "  \u00b7  Subfolders (cached)"
+            elif self._source_model.quietScanPending():
+                text += "  \u00b7  Subfolders (updating\u2026)"
+            else:
+                text += "  \u00b7  Subfolders scan"
         self._status_label.setText(text)
         _setDynamicProperty(self._status_label, "filterWarning", filter_warning)
 
@@ -3106,15 +3393,17 @@ class FilePanel(QWidget):
         self._scan_thread = None
 
     def _onRecursiveScanRequested(self, path, gen):
+        quiet = self._source_model.quietScanPending()
         self._cancelRecursiveScanThread()
-        self._scan_progress = QProgressDialog(self)
-        self._scan_progress.setWindowTitle("Scanning subfolders")
-        self._scan_progress.setLabelText("Starting…")
-        self._scan_progress.setCancelButtonText("Cancel")
-        self._scan_progress.setRange(0, 0)
-        self._scan_progress.setMinimumDuration(0)
-        self._scan_progress.setWindowModality(Qt.WindowModal)
-        self._scan_progress.canceled.connect(self._onScanProgressCanceled)
+        if not quiet:
+            self._scan_progress = QProgressDialog(self)
+            self._scan_progress.setWindowTitle("Scanning subfolders")
+            self._scan_progress.setLabelText("Starting…")
+            self._scan_progress.setCancelButtonText("Cancel")
+            self._scan_progress.setRange(0, 0)
+            self._scan_progress.setMinimumDuration(0)
+            self._scan_progress.setWindowModality(Qt.WindowModal)
+            self._scan_progress.canceled.connect(self._onScanProgressCanceled)
 
         self._scan_thread = RecursiveScanThread(
             gen,
@@ -3126,6 +3415,8 @@ class FilePanel(QWidget):
         self._scan_thread.finishedScan.connect(self._onRecursiveScanFinished)
         self._scan_thread.scanCancelled.connect(self._onRecursiveScanCancelled)
         self._scan_thread.start()
+        if quiet:
+            self._updateStatusLabel()
 
     def _onScanProgressCanceled(self):
         if self._scan_thread is not None and self._scan_thread.isRunning():
@@ -3144,7 +3435,8 @@ class FilePanel(QWidget):
     def _onRecursiveScanFinished(self, gen, entries):
         self._closeScanProgress()
         self._source_model.applyRecursiveScanResult(gen, entries)
-        self._updateStatusLabel()
+        self._proxy_model.invalidateFilter()
+        self._updateFilterUi()
         thr = self._scan_thread
         self._scan_thread = None
         if thr is not None:
@@ -3152,6 +3444,9 @@ class FilePanel(QWidget):
 
     def _onRecursiveScanCancelled(self, gen):
         self._closeScanProgress()
+        # Quiet reconcile cancel: keep cached listing visible.
+        if self._source_model.listingFromCache():
+            self._source_model._quiet_scan = False
         self._updateStatusLabel()
         if self._scan_thread is None:
             return

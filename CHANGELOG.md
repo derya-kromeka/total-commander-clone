@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.61] - 2026-08-10
+
+### Added
+
+- **Recursive search cache**: Subfolders listings are kept in memory and optionally on disk so returning to the same folder is fast. After copy/move/delete, the list is updated in place instead of re-walking the whole tree. Filter banner **Refresh** / F5 still force a full scan. Settings → **Cache recursive folder scans**.
+
 ## [0.4.60] - 2026-08-10
 
 ### Added

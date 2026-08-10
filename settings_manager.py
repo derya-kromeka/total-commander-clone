@@ -68,6 +68,8 @@ DEFAULT_SETTINGS = {
     "check_for_updates_on_startup": True,
     # When user chooses "Skip this version", store that remote version string.
     "skip_update_version": "",
+    # Cache recursive (Subfolders) scan trees in memory and on disk.
+    "cache_recursive_scans": True,
 }
 
 

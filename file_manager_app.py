@@ -187,7 +187,25 @@ class FileManagerApp(QMainWindow):
         self._update_check_publish_intent = False
         self._publish_worker = None
         self._publish_pending_result = None
+        self._configureScanCache()
         self._show_home_path()
+
+    # --------------------------------------------------------
+    # Method: _configureScanCache
+    # Purpose: Point recursive scan cache at config dir + settings flag.
+    # --------------------------------------------------------
+    def _configureScanCache(self):
+        from scan_cache import configureScanCache, pruneScanCacheOnStartup
+
+        config_dir = os.path.dirname(
+            getattr(self._settings, "_settings_path", "") or ""
+        ) or None
+        enabled = self._settings.getSetting("cache_recursive_scans", True)
+        configureScanCache(config_dir, enabled=enabled)
+        try:
+            pruneScanCacheOnStartup()
+        except Exception:
+            pass
 
     # --------------------------------------------------------
     # Method: _show_home_path
@@ -988,7 +1006,14 @@ class FileManagerApp(QMainWindow):
         self._transfers_bar.updateFromQueue(self._transfer_queue)
         if self._transfers_details is not None and self._transfers_details.isVisible():
             self._transfers_details.onTaskFinished(task, success, message)
-        self._refreshBothPanels()
+        if not success:
+            self._refreshBothPanels()
+            self._showStatus(message)
+            return
+        for panel in (self._left_panel, self._right_panel):
+            result = panel.applyTransferResult(task)
+            if result == "fallback":
+                panel.refresh(force_rescan=True)
         self._showStatus(message)
 
     def _onTransferQueueIdle(self):
@@ -1545,8 +1570,8 @@ class FileManagerApp(QMainWindow):
     # View
     # --------------------------------------------------------
     def _onRefresh(self):
-        self._left_panel.refresh()
-        self._right_panel.refresh()
+        self._left_panel.refresh(force_rescan=True)
+        self._right_panel.refresh(force_rescan=True)
         self._showStatus("Refreshed.")
 
     def _onToggleHidden(self, checked):
@@ -1577,6 +1602,11 @@ class FileManagerApp(QMainWindow):
         self._action_show_hidden.setChecked(values["show_hidden_files"])
         self._left_panel.setShowHidden(values["show_hidden_files"])
         self._right_panel.setShowHidden(values["show_hidden_files"])
+
+        if "cache_recursive_scans" in values:
+            from scan_cache import setScanCacheEnabled
+
+            setScanCacheEnabled(bool(values["cache_recursive_scans"]))
 
         app = QApplication.instance()
         applyTheme(
@@ -2673,8 +2703,8 @@ class FileManagerApp(QMainWindow):
     # Utility
     # --------------------------------------------------------
     def _refreshBothPanels(self):
-        self._left_panel.refresh()
-        self._right_panel.refresh()
+        self._left_panel.refresh(force_rescan=True)
+        self._right_panel.refresh(force_rescan=True)
 
     def _showStatus(self, message, timeout=5000):
         self._status_info.setText(message)

@@ -89,6 +89,17 @@ class SettingsDialog(QDialog):
         )
         form.addRow("Updates", self._check_updates)
 
+        self._cache_scans = QCheckBox(
+            "Cache recursive folder scans (Subfolders search)", self
+        )
+        self._cache_scans.setToolTip(
+            "Keeps Subfolders listings in memory and on disk so returning to the same\n"
+            "folder is fast. Copy/move updates the list without a full re-scan.\n"
+            "Use the filter banner Refresh (or F5) to force a full scan from disk.\n"
+            "Deep changes made outside the app may need a manual Refresh."
+        )
+        form.addRow("Search cache", self._cache_scans)
+
         self._default_left_path = QLineEdit(self)
         form.addRow("Default left path", self._default_left_path)
 
@@ -158,6 +169,9 @@ class SettingsDialog(QDialog):
         self._check_updates.setChecked(
             self._settings.getSetting("check_for_updates_on_startup", True)
         )
+        self._cache_scans.setChecked(
+            self._settings.getSetting("cache_recursive_scans", True)
+        )
         self._default_left_path.setText(self._settings.getSetting("default_left_path", "") or "")
         self._default_right_path.setText(self._settings.getSetting("default_right_path", "") or "")
         cur_mirror = self._settings.getSetting("mirror_mode", "to_other")
@@ -171,6 +185,7 @@ class SettingsDialog(QDialog):
             "show_hidden_files": self._show_hidden.isChecked(),
             "confirm_delete": self._confirm_delete.isChecked(),
             "check_for_updates_on_startup": self._check_updates.isChecked(),
+            "cache_recursive_scans": self._cache_scans.isChecked(),
             "default_left_path": self._default_left_path.text().strip(),
             "default_right_path": self._default_right_path.text().strip(),
             "mirror_mode": self._mirror_mode.currentData(),
