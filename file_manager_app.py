@@ -35,7 +35,14 @@ from app_version import APP_VERSION, APP_NAME, getWindowTitle
 from file_properties_dialog import showFileProperties
 from settings_dialog import SettingsDialog
 from theme import applyTheme, getUiMetrics, normalize_ui_scale, step_ui_scale, ui_scale_label
-from app_updater import checkRemoteAppVersion, launchUpdateAndRebuild
+from app_updater import (
+    checkRemoteAppVersion,
+    getPublishPreview,
+    launchUpdateAndRebuild,
+    publishLocalVersionToGitHub,
+)
+from config_backup import _loadSavedGitAuth
+from git_credentials_dialog import GitCredentialsDialog
 
 
 # ------------------------------------------------------------
@@ -66,8 +73,33 @@ class UpdateCheckWorker(QThread):
                 "remote": "",
                 "repo_root": "",
                 "message": str(exc),
+                "can_publish": False,
             }
         self.resultReady.emit(result)
+
+
+# ------------------------------------------------------------
+# Class: PublishVersionWorker
+# Purpose: Background commit (if needed) + non-force git push.
+# ------------------------------------------------------------
+class PublishVersionWorker(QThread):
+
+    resultReady = pyqtSignal(bool, str, bool)
+
+    def __init__(self, repo_root, auth=None, parent=None):
+        super().__init__(parent)
+        self._repo_root = repo_root
+        self._auth = auth
+
+    def run(self):
+        try:
+            ok, message, auth_failed = publishLocalVersionToGitHub(
+                self._repo_root,
+                auth=self._auth,
+            )
+        except Exception as exc:
+            ok, message, auth_failed = False, str(exc), False
+        self.resultReady.emit(ok, message, auth_failed)
 
 
 # ------------------------------------------------------------
@@ -152,6 +184,9 @@ class FileManagerApp(QMainWindow):
         self._post_show_layout_done = False
         self._update_check_worker = None
         self._update_check_manual = False
+        self._update_check_publish_intent = False
+        self._publish_worker = None
+        self._publish_pending_result = None
         self._show_home_path()
 
     # --------------------------------------------------------
@@ -455,13 +490,22 @@ class FileManagerApp(QMainWindow):
         self._action_check_updates = QAction("Check for Updates...", self)
         self._action_check_updates.setToolTip(
             "Check for updates\n\n"
-            "Compare this version to APP_VERSION on the Git remote. "
-            "If newer, you can pull and rebuild."
+            "Compare this version to APP_VERSION on GitHub. "
+            "If GitHub is newer, you can pull and rebuild. "
+            "If your version is newer, you can publish to GitHub."
         )
         self._action_check_updates.triggered.connect(
             lambda: self._startUpdateCheck(manual=True)
         )
         help_menu.addAction(self._action_check_updates)
+        self._action_publish_version = QAction("Publish Version to GitHub...", self)
+        self._action_publish_version.setToolTip(
+            "Publish version to GitHub\n\n"
+            "If this app’s APP_VERSION is newer than GitHub, commit (if needed) "
+            "and push with a normal (non-force) push. Asks for credentials when required."
+        )
+        self._action_publish_version.triggered.connect(self._onPublishVersionToGitHub)
+        help_menu.addAction(self._action_publish_version)
         help_menu.addSeparator()
         self._action_about = QAction("About", self)
         self._action_about.setToolTip(
@@ -2221,20 +2265,25 @@ class FileManagerApp(QMainWindow):
         )
 
     # --------------------------------------------------------
-    # Updates (Git remote APP_VERSION → pull + rebuild)
+    # Updates (Git remote APP_VERSION → pull + rebuild / publish)
     # --------------------------------------------------------
-    def _startUpdateCheck(self, manual=False):
+    def _startUpdateCheck(self, manual=False, publish_intent=False):
         if self._update_check_worker is not None and self._update_check_worker.isRunning():
-            if manual:
+            if manual or publish_intent:
                 self._showStatus("Update check already running…")
             return
 
-        self._update_check_manual = bool(manual)
-        if manual:
-            self._showStatus("Checking Git for updates…")
+        self._update_check_manual = bool(manual) or bool(publish_intent)
+        self._update_check_publish_intent = bool(publish_intent)
+        if self._update_check_manual:
+            self._showStatus(
+                "Checking GitHub to publish…"
+                if publish_intent
+                else "Checking Git for updates…"
+            )
 
         skip = ""
-        if not manual:
+        if not self._update_check_manual:
             skip = self._settings.getSetting("skip_update_version", "") or ""
 
         project_root = getattr(self._settings, "_project_root", None)
@@ -2248,14 +2297,28 @@ class FileManagerApp(QMainWindow):
         self._update_check_worker = worker
         worker.start()
 
+    def _onPublishVersionToGitHub(self):
+        self._startUpdateCheck(manual=True, publish_intent=True)
+
     def _onUpdateCheckResult(self, result):
         manual = self._update_check_manual
+        publish_intent = self._update_check_publish_intent
+        self._update_check_publish_intent = False
         status = (result or {}).get("status", "error")
         message = (result or {}).get("message", "")
         remote = (result or {}).get("remote", "")
         repo_root = (result or {}).get("repo_root", "")
+        can_publish = bool((result or {}).get("can_publish"))
 
         if status == "update_available":
+            if publish_intent:
+                QMessageBox.information(
+                    self,
+                    "Publish Version to GitHub",
+                    "GitHub already has a newer or equal version.\n\n"
+                    + (message or f"Remote: v{remote}"),
+                )
+                return
             box = QMessageBox(self)
             box.setIcon(QMessageBox.Information)
             box.setWindowTitle("Update available")
@@ -2276,6 +2339,36 @@ class FileManagerApp(QMainWindow):
                 self._showStatus("Update postponed.")
             return
 
+        if status == "local_ahead":
+            if not manual:
+                return
+            if not can_publish:
+                QMessageBox.warning(
+                    self,
+                    "Publish Version to GitHub"
+                    if publish_intent
+                    else "Local version is ahead",
+                    message
+                    or "Cannot publish: need a Git source checkout and Git installed.",
+                )
+                return
+            if publish_intent:
+                self._offerPublishToGitHub(result)
+                return
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Information)
+            box.setWindowTitle("Local version is ahead")
+            box.setText(message)
+            publish_btn = box.addButton(
+                "Publish to GitHub…", QMessageBox.AcceptRole
+            )
+            box.addButton("Close", QMessageBox.RejectRole)
+            box.setDefaultButton(publish_btn)
+            box.exec_()
+            if box.clickedButton() is publish_btn:
+                self._offerPublishToGitHub(result)
+            return
+
         if status == "skipped" and not manual:
             return
 
@@ -2283,15 +2376,126 @@ class FileManagerApp(QMainWindow):
             # Stay quiet on automatic startup checks unless an update exists.
             return
 
-        title = "Check for Updates"
+        title = (
+            "Publish Version to GitHub"
+            if publish_intent
+            else "Check for Updates"
+        )
         if status == "up_to_date":
-            QMessageBox.information(self, title, message or "You are up to date.")
+            if publish_intent:
+                QMessageBox.information(
+                    self,
+                    title,
+                    "Local and GitHub versions match "
+                    f"(v{(result or {}).get('local', APP_VERSION)}). "
+                    "Nothing to publish.",
+                )
+            else:
+                QMessageBox.information(self, title, message or "You are up to date.")
         else:
             QMessageBox.warning(
                 self,
                 title,
                 message or "Could not check for updates.",
             )
+
+    def _offerPublishToGitHub(self, result):
+        repo_root = (result or {}).get("repo_root", "")
+        local_v = (result or {}).get("local", APP_VERSION)
+        remote_v = (result or {}).get("remote", "")
+        if not repo_root:
+            QMessageBox.warning(
+                self,
+                "Publish Version to GitHub",
+                "No Git project root was found.",
+            )
+            return
+
+        preview = getPublishPreview(repo_root, local_v, remote_v)
+        dirty_line = (
+            "Uncommitted changes will be committed as "
+            f"\"release: v{local_v}\"."
+            if preview.get("dirty")
+            else "Working tree is clean (no new commit needed)."
+        )
+        text = (
+            f"Publish local v{local_v} to GitHub (currently v{remote_v})?\n\n"
+            f"Branch:  {preview.get('branch', '')}\n"
+            f"Remote:  {preview.get('remote_url', '')}\n\n"
+            f"{dirty_line}\n\n"
+            "This uses a normal git push (never force-push)."
+        )
+        reply = QMessageBox.question(
+            self,
+            "Publish Version to GitHub",
+            text,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        self._publish_pending_result = result
+        auth = _loadSavedGitAuth(repo_root)
+        if not auth or not auth.get("pat"):
+            dlg = GitCredentialsDialog(
+                repo_root,
+                parent=self,
+                message=(
+                    "No saved GitHub credentials were found. "
+                    "Enter a username and Personal Access Token (PAT) to push."
+                ),
+            )
+            if dlg.exec_() != QDialog.Accepted:
+                return
+            auth = dlg.authDict()
+
+        self._startPublishWorker(repo_root, auth)
+
+    def _startPublishWorker(self, repo_root, auth):
+        if self._publish_worker is not None and self._publish_worker.isRunning():
+            self._showStatus("Publish already running…")
+            return
+        self._showStatus("Publishing version to GitHub…")
+        worker = PublishVersionWorker(repo_root, auth=auth, parent=self)
+        worker.resultReady.connect(self._onPublishVersionResult)
+        self._publish_worker = worker
+        worker.start()
+
+    def _onPublishVersionResult(self, ok, message, auth_failed):
+        pending = self._publish_pending_result or {}
+        repo_root = pending.get("repo_root", "")
+        if ok:
+            self._publish_pending_result = None
+            QMessageBox.information(
+                self,
+                "Publish Version to GitHub",
+                message or "Published successfully.",
+            )
+            self._showStatus("Published version to GitHub.")
+            return
+
+        if auth_failed and repo_root:
+            dlg = GitCredentialsDialog(
+                repo_root,
+                parent=self,
+                message=(
+                    "GitHub rejected the credentials. "
+                    "Enter a valid username and PAT, then try again.\n\n"
+                    f"{(message or '')[:300]}"
+                ),
+            )
+            if dlg.exec_() == QDialog.Accepted:
+                self._startPublishWorker(repo_root, dlg.authDict())
+                return
+
+        self._publish_pending_result = None
+        QMessageBox.warning(
+            self,
+            "Publish Version to GitHub",
+            message or "Publish failed.",
+        )
+        self._showStatus("Publish failed.")
 
     def _beginUpdateAndRebuild(self, repo_root):
         if not repo_root:

@@ -99,7 +99,7 @@ from PyQt5.QtWidgets import (
     QPushButton, QAbstractItemView, QHeaderView, QFrame, QLabel,
     QStyledItemDelegate, QStyle, QApplication, QComboBox,
     QFileIconProvider, QInputDialog, QMessageBox, QProgressDialog,
-    QMenu, QAction, QActionGroup, QToolButton, QCheckBox,
+    QMenu, QAction, QActionGroup, QCheckBox,
 )
 from PyQt5.QtCore import (
     Qt, QAbstractTableModel, QModelIndex, QVariant, QMimeData,
@@ -1446,9 +1446,8 @@ class FilePanel(QWidget):
         self._filter_edit.setToolTip(
             "Filter\n\n"
             "Narrow the file list by name. Separate multiple words with spaces; "
-            "use the gear for AND/OR, exclude terms, extensions, match mode, "
-            "files/folders, size, date, and saved presets. Use Subfolders to search "
-            "below the current folder."
+            "open Settings for AND/OR, exclude terms, extensions, match mode, "
+            "files/folders, subfolders (recursive search), size, date, and saved presets."
         )
 
         self._btn_clear_filter = QPushButton("\u2715 Clear")
@@ -1463,25 +1462,25 @@ class FilePanel(QWidget):
         self._btn_clear_filter.clicked.connect(self.clearFilter)
         self._btn_clear_filter.setVisible(False)
 
-        self._btn_filter_options = QToolButton()
-        self._btn_filter_options.setObjectName("navButton")
-        self._btn_filter_options.setFixedSize(30, NAV_BAR_HEIGHT)
-        self._btn_filter_options.setIconSize(QSize(NAV_ICON_SIZE, NAV_ICON_SIZE))
+        self._btn_filter_options = QPushButton("\u2699 Settings")
+        self._btn_filter_options.setObjectName("filterSettingsButton")
+        self._btn_filter_options.setFixedHeight(NAV_BAR_HEIGHT)
+        self._btn_filter_options.setAutoDefault(False)
+        self._btn_filter_options.setDefault(False)
         self._btn_filter_options.setToolTip(
-            "Filter options\n\n"
+            "Filter settings\n\n"
             "Open the filter dialog: include/exclude words (AND/OR), file extensions, "
-            "match mode, files or folders only, subfolders, size and modified date "
-            "(with AND/OR), saved presets."
+            "match mode, files or folders only, include subfolders (recursive search), "
+            "size and modified date (with AND/OR), and saved presets."
         )
-        self._btn_filter_options.setAutoRaise(True)
         self._btn_filter_options.clicked.connect(self._onOpenFilterOptions)
         filter_opts_icon = QIcon.fromTheme("view-filter")
         if filter_opts_icon.isNull():
             filter_opts_icon = style.standardIcon(QStyle.SP_FileDialogContentsView)
-        if filter_opts_icon.isNull():
-            self._btn_filter_options.setText("\u2699")
-        else:
+        if not filter_opts_icon.isNull():
             self._btn_filter_options.setIcon(filter_opts_icon)
+            self._btn_filter_options.setIconSize(QSize(NAV_ICON_SIZE, NAV_ICON_SIZE))
+            self._btn_filter_options.setText("Settings")
 
         self._btn_new_folder = QPushButton()
         self._btn_new_folder.setObjectName("navButton")
@@ -1510,20 +1509,7 @@ class FilePanel(QWidget):
         nav_layout.addWidget(self._drive_container)
         nav_layout.addWidget(self._filter_edit, 1)
         nav_layout.addWidget(self._btn_clear_filter, 0, Qt.AlignVCenter)
-        self._btn_filter_subfolders = QPushButton("Subfolders")
-        self._btn_filter_subfolders.setObjectName("filterSubfoldersToggle")
-        self._btn_filter_subfolders.setCheckable(True)
-        self._btn_filter_subfolders.setFixedHeight(NAV_BAR_HEIGHT)
-        self._btn_filter_subfolders.setAutoDefault(False)
-        self._btn_filter_subfolders.setDefault(False)
-        self._btn_filter_subfolders.setToolTip(
-            "Search subfolders\n\n"
-            "When active, the list includes items in all subdirectories under the current "
-            "path. This can be slow in very large folder trees."
-        )
-        self._btn_filter_subfolders.toggled.connect(self._onSubfoldersFilterToggled)
-        nav_layout.addWidget(self._btn_filter_subfolders, 0, Qt.AlignVCenter)
-        nav_layout.addWidget(self._btn_filter_options)
+        nav_layout.addWidget(self._btn_filter_options, 0, Qt.AlignVCenter)
 
         layout.addLayout(nav_layout)
 
@@ -1536,6 +1522,16 @@ class FilePanel(QWidget):
         self._filter_banner_label = QLabel()
         self._filter_banner_label.setObjectName("panelFilterBannerText")
         self._filter_banner_label.setWordWrap(True)
+        self._filter_banner_refresh_btn = QPushButton("\u21bb Refresh")
+        self._filter_banner_refresh_btn.setObjectName("filterRefreshButton")
+        self._filter_banner_refresh_btn.setAutoDefault(False)
+        self._filter_banner_refresh_btn.setDefault(False)
+        self._filter_banner_refresh_btn.setToolTip(
+            "Refresh search\n\n"
+            "Reload the current folder (and re-scan subfolders when that option is on), "
+            "then re-apply all active filter rules."
+        )
+        self._filter_banner_refresh_btn.clicked.connect(self.refreshFilterSearch)
         self._filter_banner_btn = QPushButton("\u2715 Clear filter")
         self._filter_banner_btn.setObjectName("filterClearButton")
         self._filter_banner_btn.setAutoDefault(False)
@@ -1546,6 +1542,7 @@ class FilePanel(QWidget):
         )
         self._filter_banner_btn.clicked.connect(self.clearFilter)
         banner_layout.addWidget(self._filter_banner_label, 1)
+        banner_layout.addWidget(self._filter_banner_refresh_btn, 0, Qt.AlignVCenter)
         banner_layout.addWidget(self._filter_banner_btn, 0, Qt.AlignVCenter)
         self._filter_banner.setVisible(False)
         layout.addWidget(self._filter_banner)
@@ -1600,12 +1597,12 @@ class FilePanel(QWidget):
             self._btn_up,
             self._btn_home,
             self._btn_new_folder,
-            self._btn_filter_options,
         ):
             btn.setFixedSize(btn_w, h)
             btn.setIconSize(icon_sz)
         self._btn_clear_filter.setFixedHeight(h)
-        self._btn_filter_subfolders.setFixedHeight(h)
+        self._btn_filter_options.setFixedHeight(h)
+        self._btn_filter_options.setIconSize(icon_sz)
         self._drive_combo.setFixedSize(metrics["drive_combo_width"], h)
         arrow_w = max(12, int(round(btn_w * 14 / 30)))
         self._drive_arrow.setFixedSize(arrow_w, h)
@@ -2095,7 +2092,6 @@ class FilePanel(QWidget):
             self._btn_forward,
             self._btn_up,
             self._btn_home,
-            self._btn_filter_subfolders,
             self._btn_filter_options,
             self._btn_new_folder,
             self._drive_combo,
@@ -2414,16 +2410,15 @@ class FilePanel(QWidget):
             "filter_exclude_text": self._proxy_model.filterExcludeText(),
             "filter_extensions": self._proxy_model.filterExtensionsText(),
             "filter_words_combine_and": self._proxy_model.filterWordsCombineAnd(),
-            "filter_include_subfolders": self._btn_filter_subfolders.isChecked(),
+            "filter_include_subfolders": self._source_model.isRecursive(),
             "filter_advanced": self._proxy_model.filterSpec().to_dict(),
         }
 
     def restoreHistoryData(self, data):
         self._history = data.get("history", [])
-        self._btn_filter_subfolders.blockSignals(True)
-        self._btn_filter_subfolders.setChecked(data.get("filter_include_subfolders", False))
-        self._btn_filter_subfolders.blockSignals(False)
-        self._source_model.setRecursive(self._btn_filter_subfolders.isChecked())
+        self._source_model.setRecursive(
+            bool(data.get("filter_include_subfolders", False))
+        )
 
         current = data.get("current_path", "")
         if current and os.path.isdir(current):
@@ -2491,7 +2486,6 @@ class FilePanel(QWidget):
             self._btn_forward,
             self._btn_up,
             self._btn_home,
-            self._btn_filter_subfolders,
             self._btn_filter_options,
             self._btn_new_folder,
             self._drive_combo,
@@ -2775,7 +2769,7 @@ class FilePanel(QWidget):
             "filter_words_combine_and": self._proxy_model.filterWordsCombineAnd(),
             "filter_mode": self._proxy_model.filterMode(),
             "filter_kind": self._proxy_model.entryKindFilter(),
-            "filter_include_subfolders": self._btn_filter_subfolders.isChecked(),
+            "filter_include_subfolders": self._source_model.isRecursive(),
             "filter_advanced": self._proxy_model.filterSpec().to_dict(),
         }
 
@@ -2802,10 +2796,8 @@ class FilePanel(QWidget):
             FilterSpec.from_dict(data.get("filter_advanced"))
         )
         sub = bool(data.get("filter_include_subfolders", False))
-        self._btn_filter_subfolders.blockSignals(True)
-        self._btn_filter_subfolders.setChecked(sub)
-        self._btn_filter_subfolders.blockSignals(False)
-        self._source_model.setRecursive(sub)
+        if not self._setIncludeSubfolders(sub):
+            sub = False
         self._updateFilterUi()
 
     def clearFilter(self):
@@ -2826,8 +2818,26 @@ class FilePanel(QWidget):
         dlg = FilterOptionsDialog(self, self._settings_manager, self)
         dlg.exec_()
 
-    def _onSubfoldersFilterToggled(self, checked):
-        if checked and self._settings_manager:
+    # --------------------------------------------------------
+    # Method: refreshFilterSearch
+    # Purpose: Re-run the current search: reload the folder listing
+    #          (re-scanning subfolders when enabled) and re-apply
+    #          proxy filter rules.
+    # --------------------------------------------------------
+    def refreshFilterSearch(self):
+        self.refresh()
+        self._proxy_model.invalidateFilter()
+        self._updateFilterUi()
+
+    # --------------------------------------------------------
+    # Method: _setIncludeSubfolders
+    # Purpose: Enable or disable recursive listing. Shows a
+    #          first-time warning when enabling. Returns False
+    #          if the user cancelled the warning (left disabled).
+    # --------------------------------------------------------
+    def _setIncludeSubfolders(self, enabled):
+        enabled = bool(enabled)
+        if enabled and not self._source_model.isRecursive() and self._settings_manager:
             if not self._settings_manager.getSetting(
                 "subfolders_warning_dismissed", False
             ):
@@ -2850,12 +2860,10 @@ class FilePanel(QWidget):
                     )
                     self._settings_manager.saveSettings()
                 if r != QMessageBox.Ok:
-                    self._btn_filter_subfolders.blockSignals(True)
-                    self._btn_filter_subfolders.setChecked(False)
-                    self._btn_filter_subfolders.blockSignals(False)
-                    return
-        self._source_model.setRecursive(self._btn_filter_subfolders.isChecked())
-        self._updateFilterUi()
+                    self._source_model.setRecursive(False)
+                    return False
+        self._source_model.setRecursive(enabled)
+        return True
 
     # --------------------------------------------------------
     # Method: _hasActiveFilter
@@ -2873,7 +2881,7 @@ class FilePanel(QWidget):
             return True
         if self._proxy_model.entryKindFilter() != "all":
             return True
-        if self._btn_filter_subfolders.isChecked():
+        if self._source_model.isRecursive():
             return True
         spec = self._proxy_model.filterSpec()
         if spec is not None and not spec.is_empty():
@@ -2910,7 +2918,7 @@ class FilePanel(QWidget):
                 parts.append("AND words")
             else:
                 parts.append("OR words")
-        if self._btn_filter_subfolders.isChecked():
+        if self._source_model.isRecursive():
             parts.append("subfolders")
         spec = self._proxy_model.filterSpec()
         if spec is not None and not spec.is_empty():
@@ -2940,7 +2948,7 @@ class FilePanel(QWidget):
             hint.append("folders")
         elif kind == "files":
             hint.append("files")
-        if self._btn_filter_subfolders.isChecked():
+        if self._source_model.isRecursive():
             hint.append("subfolders")
         if self._proxy_model.filterExcludeText().strip():
             hint.append("exclude")
@@ -2973,6 +2981,7 @@ class FilePanel(QWidget):
             self._filter_banner_label.setText(banner)
 
         _setDynamicProperty(self._filter_edit, "filterActive", active)
+        _setDynamicProperty(self._btn_filter_options, "filterActive", active)
         self._updateStatusLabel()
 
     def _onFilterChanged(self, text):

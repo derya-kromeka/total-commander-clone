@@ -16,10 +16,13 @@ import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
 from config_backup import (
+    _authExtraHeaderArgs,
     _loadSavedGitAuth,
     _runGit,
     findGitRepoRoot,
+    loadGitAccountProfile,
     resolveBackupRepoRoot,
+    runGitPushWithAuth,
 )
 
 
@@ -306,6 +309,7 @@ def checkRemoteAppVersion(
         "branch": "",
         "remote_name": "",
         "source": "",
+        "can_publish": False,
     }
 
     if not repo_root:
@@ -396,16 +400,35 @@ def checkRemoteAppVersion(
         result["message"] = "Could not compare version numbers."
         return result
 
-    if cmp >= 0:
+    if cmp == 0:
         result["status"] = "up_to_date"
-        if cmp == 0:
+        result["can_publish"] = False
+        result["message"] = (
+            f"You are on the latest version (v{local_version})."
+        )
+        return result
+
+    if cmp > 0:
+        can_publish = bool(
+            has_git and os.path.isdir(os.path.join(repo_root, ".git"))
+        )
+        result["status"] = "local_ahead"
+        result["can_publish"] = can_publish
+        if can_publish:
             result["message"] = (
-                f"You are on the latest version (v{local_version})."
+                f"Your version (v{local_version}) is newer than "
+                f"GitHub (v{remote_version}).\n\n"
+                f"Branch: {branch}\n"
+                f"Repo:   {PUBLIC_REPO_OWNER}/{PUBLIC_REPO_NAME}\n\n"
+                "You can publish this version to GitHub (commit if needed, "
+                "then a normal push — never force-push)."
             )
         else:
             result["message"] = (
                 f"Your version (v{local_version}) is newer than "
-                f"GitHub (v{remote_version})."
+                f"GitHub (v{remote_version}).\n\n"
+                "Publishing requires a Git source checkout (a .git folder) "
+                "and Git installed. Frozen/exe-only installs cannot push."
             )
         return result
 
@@ -433,6 +456,224 @@ def checkRemoteAppVersion(
         "No GitHub login is required."
     )
     return result
+
+
+# ------------------------------------------------------------
+# Function: getRemoteUrl
+# Purpose: origin (or default remote) URL for display / credentials.
+# ------------------------------------------------------------
+def getRemoteUrl(repo_root: str) -> str:
+    if not repo_root:
+        return PUBLIC_REPO_HTTPS
+    remote = _defaultRemote(repo_root)
+    ok, url = _runGit(repo_root, ["remote", "get-url", remote], timeout=15)
+    if ok and (url or "").strip():
+        return (url or "").strip()
+    profile = loadGitAccountProfile(repo_root) or {}
+    saved = (profile.get("remoteUrl") or "").strip()
+    return saved or PUBLIC_REPO_HTTPS
+
+
+# ------------------------------------------------------------
+# Function: getWorkingTreeDirty
+# Purpose: True when git status --porcelain has any output.
+# ------------------------------------------------------------
+def getWorkingTreeDirty(repo_root: str) -> bool:
+    ok, status = _runGit(repo_root, ["status", "--porcelain"], timeout=30)
+    if not ok:
+        return False
+    return bool((status or "").strip())
+
+
+# ------------------------------------------------------------
+# Function: getPublishPreview
+# Purpose: Facts for the publish confirmation dialog.
+# ------------------------------------------------------------
+def getPublishPreview(
+    repo_root: str,
+    local_version: str = "",
+    remote_version: str = "",
+) -> Dict[str, Any]:
+    has_git = (
+        bool(repo_root)
+        and _gitAvailable()
+        and os.path.isdir(os.path.join(repo_root, ".git"))
+    )
+    branch = _currentBranch(repo_root) if has_git else PUBLIC_DEFAULT_BRANCH
+    remote_url = getRemoteUrl(repo_root) if has_git else PUBLIC_REPO_HTTPS
+    dirty = getWorkingTreeDirty(repo_root) if has_git else False
+    return {
+        "repo_root": repo_root or "",
+        "branch": branch,
+        "remote_url": remote_url,
+        "dirty": dirty,
+        "local": local_version,
+        "remote": remote_version,
+        "can_publish": has_git,
+    }
+
+
+# ------------------------------------------------------------
+# Function: _looksLikeAuthFailure
+# Purpose: Detect push/fetch auth failures from git stderr text.
+# ------------------------------------------------------------
+def _looksLikeAuthFailure(text: str) -> bool:
+    lower = (text or "").lower()
+    needles = (
+        "authentication failed",
+        "could not read username",
+        "invalid username or password",
+        "403",
+        "401",
+        "support for password authentication was removed",
+        "permission denied",
+        "access denied",
+        "fatal: could not read password",
+        "repository not found",
+    )
+    return any(n in lower for n in needles)
+
+
+# ------------------------------------------------------------
+# Function: _looksLikeNonFastForward
+# Purpose: Detect rejected non-force-safe pushes.
+# ------------------------------------------------------------
+def _looksLikeNonFastForward(text: str) -> bool:
+    lower = (text or "").lower()
+    return any(
+        n in lower
+        for n in (
+            "non-fast-forward",
+            "fetch first",
+            "updates were rejected",
+            "failed to push some refs",
+            "[rejected]",
+        )
+    )
+
+
+# ------------------------------------------------------------
+# Function: publishLocalVersionToGitHub
+# Purpose: Fetch, verify local APP_VERSION is still ahead, commit
+#          if dirty, then normal (non-force) push. auth optional
+#          dict with username + pat; falls back to saved credentials.
+# Output: (ok, message). Third tuple slot auth_failed for UI retry.
+# ------------------------------------------------------------
+def publishLocalVersionToGitHub(
+    repo_root: str,
+    auth: Optional[Dict[str, Any]] = None,
+) -> Tuple[bool, str, bool]:
+    if not repo_root or not os.path.isdir(repo_root):
+        return False, "Invalid project root.", False
+    if not _gitAvailable():
+        return False, "Git is not installed or not on PATH.", False
+    if not os.path.isdir(os.path.join(repo_root, ".git")):
+        return (
+            False,
+            "This folder is not a Git checkout (no .git). "
+            "Publishing requires the source repository.",
+            False,
+        )
+
+    from app_version import APP_VERSION
+
+    local_version = APP_VERSION
+    ensurePublicOrigin(repo_root)
+    remote = _defaultRemote(repo_root)
+    branch = _currentBranch(repo_root)
+
+    use_auth = auth if auth and auth.get("pat") else _loadSavedGitAuth(repo_root)
+    header_args = _authExtraHeaderArgs(use_auth)
+
+    # Prefer configuring remote URL when auth dialog supplied one.
+    if auth and (auth.get("remote_url") or "").strip():
+        url = (auth.get("remote_url") or "").strip()
+        _runGit(repo_root, ["remote", "set-url", remote, url], timeout=15)
+
+    fetch_cmd = [*header_args, "fetch", remote, branch] if header_args else [
+        "fetch",
+        remote,
+        branch,
+    ]
+    ok, fetch_out = _runGit(repo_root, fetch_cmd, timeout=90)
+    if not ok and not header_args:
+        # Anonymous fetch failed — retry with saved PAT if any.
+        saved = _loadSavedGitAuth(repo_root)
+        retry_headers = _authExtraHeaderArgs(saved)
+        if retry_headers:
+            ok, fetch_out = _runGit(
+                repo_root,
+                [*retry_headers, "fetch", remote, branch],
+                timeout=90,
+            )
+            if ok:
+                use_auth = saved
+    if not ok:
+        auth_fail = _looksLikeAuthFailure(fetch_out)
+        return (
+            False,
+            f"git fetch failed:\n{(fetch_out or 'Unknown error')[:500]}",
+            auth_fail,
+        )
+
+    ok, remote_file = _runGit(
+        repo_root,
+        ["show", f"{remote}/{branch}:app_version.py"],
+        timeout=30,
+    )
+    if ok:
+        remote_version = parseAppVersionFromText(remote_file)
+        if remote_version:
+            cmp = compareVersions(local_version, remote_version)
+            if cmp is not None and cmp <= 0:
+                return (
+                    False,
+                    f"Local version v{local_version} is no longer ahead of "
+                    f"GitHub v{remote_version}. Publish aborted.",
+                    False,
+                )
+
+    dirty = getWorkingTreeDirty(repo_root)
+    if dirty:
+        ok, add_out = _runGit(repo_root, ["add", "-A"], timeout=60)
+        if not ok:
+            return False, f"git add failed:\n{(add_out or '')[:400]}", False
+        msg = f"release: v{local_version}"
+        ok, commit_out = _runGit(repo_root, ["commit", "-m", msg], timeout=60)
+        if not ok:
+            # Nothing to commit after add is fine; other errors are not.
+            lower = (commit_out or "").lower()
+            if "nothing to commit" not in lower:
+                return (
+                    False,
+                    f"git commit failed:\n{(commit_out or '')[:400]}",
+                    False,
+                )
+
+    ok, push_out = runGitPushWithAuth(repo_root, auth=use_auth)
+    if ok:
+        return (
+            True,
+            f"Published v{local_version} to {remote}/{branch} "
+            f"({getRemoteUrl(repo_root)}).",
+            False,
+        )
+
+    if _looksLikeNonFastForward(push_out):
+        return (
+            False,
+            "Push was rejected (non-fast-forward). "
+            "Pull or merge remote changes first, then try again.\n"
+            "This app never force-pushes.\n\n"
+            f"{(push_out or '')[:400]}",
+            False,
+        )
+    auth_fail = _looksLikeAuthFailure(push_out)
+    return (
+        False,
+        f"git push failed:\n{(push_out or 'Unknown error')[:500]}",
+        auth_fail,
+    )
 
 
 # ------------------------------------------------------------

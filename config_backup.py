@@ -12,7 +12,7 @@ import socket
 import subprocess
 import threading
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 
 # ------------------------------------------------------------
@@ -295,26 +295,162 @@ def _loadSavedGitAuth(repo_root: str):
 
 
 # ------------------------------------------------------------
+# Function: loadGitAccountProfile
+# Purpose: Read .git-account.json fields (no PAT decrypt).
+# ------------------------------------------------------------
+def loadGitAccountProfile(repo_root: str) -> Optional[Dict[str, Any]]:
+    if not repo_root:
+        return None
+    profile_path = os.path.join(repo_root, ".git-account.json")
+    if not os.path.isfile(profile_path):
+        return None
+    try:
+        with open(profile_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return None
+        return data
+    except Exception:
+        return None
+
+
+# ------------------------------------------------------------
+# Function: saveGitAccountCredentials
+# Purpose: Save GitHub username/URL to .git-account.json and encrypt
+#          PAT into .git-account.pat (Windows DPAPI via PowerShell).
+# ------------------------------------------------------------
+def saveGitAccountCredentials(
+    repo_root: str,
+    username: str,
+    remote_url: str = "",
+    pat: str = "",
+    commit_name: str = "",
+    commit_email: str = "",
+) -> Tuple[bool, str]:
+    if not repo_root or not os.path.isdir(repo_root):
+        return False, "Invalid repository root."
+    username = (username or "").strip()
+    if not username:
+        return False, "GitHub username is required."
+    if os.name != "nt":
+        return False, "Saving an encrypted PAT is only supported on Windows."
+
+    existing = loadGitAccountProfile(repo_root) or {}
+    profile = {
+        "label": existing.get("label") or "default",
+        "remoteUrl": (remote_url or "").strip() or (existing.get("remoteUrl") or ""),
+        "commitName": (commit_name or "").strip() or (existing.get("commitName") or ""),
+        "commitEmail": (commit_email or "").strip() or (existing.get("commitEmail") or ""),
+        "githubUsername": username,
+    }
+    profile_path = os.path.join(repo_root, ".git-account.json")
+    pat_path = os.path.join(repo_root, ".git-account.pat")
+    try:
+        with open(profile_path, "w", encoding="utf-8") as f:
+            json.dump(profile, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+    except Exception as exc:
+        return False, f"Could not write .git-account.json: {exc}"
+
+    pat = (pat or "").strip()
+    if not pat:
+        return True, "Saved profile (PAT unchanged)."
+
+    import tempfile
+
+    tmp_path = None
+    try:
+        fd, tmp_path = tempfile.mkstemp(prefix="tcc-pat-", suffix=".txt")
+        os.close(fd)
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(pat)
+        tmp_ps = tmp_path.replace("'", "''")
+        pat_ps = pat_path.replace("'", "''")
+        ps = (
+            "$ErrorActionPreference='Stop';"
+            f"$plain = (Get-Content -LiteralPath '{tmp_ps}' -Raw -Encoding UTF8).Trim();"
+            "if (-not $plain) { throw 'Empty PAT' };"
+            "$secure = ConvertTo-SecureString -String $plain -AsPlainText -Force;"
+            "$enc = ConvertFrom-SecureString -SecureString $secure;"
+            f"Set-Content -LiteralPath '{pat_ps}' -Value $enc -Encoding UTF8 -NoNewline;"
+        )
+        completed = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                ps,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+            **_hiddenSubprocessKwargs(),
+        )
+        if completed.returncode != 0:
+            err = (completed.stderr or completed.stdout or "encrypt failed").strip()
+            return False, f"Could not encrypt PAT: {err[:300]}"
+        return True, "Saved profile and encrypted PAT."
+    except Exception as exc:
+        return False, str(exc)
+    finally:
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
+
+# ------------------------------------------------------------
+# Function: _authExtraHeaderArgs
+# Purpose: git -c http.extraHeader=AUTHORIZATION… args, or [].
+# ------------------------------------------------------------
+def _authExtraHeaderArgs(auth: Optional[Dict[str, Any]]):
+    if not auth or not auth.get("pat"):
+        return []
+    import base64
+
+    user = (auth.get("username") or "").strip()
+    pat = (auth.get("pat") or "").strip()
+    if not user or not pat:
+        return []
+    pair = f"{user}:{pat}"
+    encoded = base64.b64encode(pair.encode("ascii")).decode("ascii")
+    header = f"AUTHORIZATION: basic {encoded}"
+    return ["-c", f"http.extraHeader={header}"]
+
+
+# ------------------------------------------------------------
+# Function: runGitPushWithAuth
+# Purpose: Push HEAD with optional explicit auth; never force.
+# Output: (ok, combined git output).
+# ------------------------------------------------------------
+def runGitPushWithAuth(
+    repo_root: str,
+    auth: Optional[Dict[str, Any]] = None,
+) -> Tuple[bool, str]:
+    push_args = ["push", "-u", "origin", "HEAD"]
+    use_auth = auth if auth and auth.get("pat") else _loadSavedGitAuth(repo_root)
+    header_args = _authExtraHeaderArgs(use_auth)
+    if header_args:
+        ok, out = _runGit(repo_root, [*header_args, *push_args], timeout=120)
+        if ok:
+            return True, out
+        # Fall through to plain push only when no explicit auth was given.
+        if auth and auth.get("pat"):
+            return False, out
+    return _runGit(repo_root, push_args, timeout=120)
+
+
+# ------------------------------------------------------------
 # Function: _runGitPush
 # Purpose: Push HEAD; prefer saved PAT header, else plain git push.
 # ------------------------------------------------------------
 def _runGitPush(repo_root: str) -> bool:
-    auth = _loadSavedGitAuth(repo_root)
-    push_args = ["push", "-u", "origin", "HEAD"]
-    if auth and auth.get("pat"):
-        import base64
-
-        pair = f"{auth['username']}:{auth['pat']}"
-        encoded = base64.b64encode(pair.encode("ascii")).decode("ascii")
-        header = f"AUTHORIZATION: basic {encoded}"
-        ok, _ = _runGit(
-            repo_root,
-            ["-c", f"http.extraHeader={header}", *push_args],
-            timeout=90,
-        )
-        if ok:
-            return True
-    ok, _ = _runGit(repo_root, push_args, timeout=90)
+    ok, _ = runGitPushWithAuth(repo_root)
     return ok
 
 

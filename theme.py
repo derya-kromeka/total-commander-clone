@@ -405,6 +405,46 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     QPushButton#filterClearButton:pressed {{
         background-color: rgba(243, 139, 168, 0.4);
     }}
+    QPushButton#filterSettingsButton {{
+        color: {c['text']};
+        background-color: {c['button']};
+        border: 2px solid {c['border']};
+        border-radius: 4px;
+        font-weight: bold;
+        padding: {m['nav_line_pad_v']}px {m['nav_line_pad_h']}px;
+        min-height: {m['nav_bar_height']}px;
+        max-height: {m['nav_bar_height']}px;
+        min-width: 0;
+    }}
+    QPushButton#filterSettingsButton:hover {{
+        background-color: {c['button_hover']};
+        border-color: {c['active_border']};
+    }}
+    QPushButton#filterSettingsButton:pressed {{
+        background-color: {c['button_press']};
+        border-color: {c['active_border']};
+    }}
+    QPushButton#filterSettingsButton[filterActive="true"] {{
+        border-color: {c['active_border']};
+        background-color: rgba(137, 180, 250, 0.18);
+    }}
+    QPushButton#filterRefreshButton {{
+        color: {c['text']};
+        background-color: rgba(137, 180, 250, 0.14);
+        border: 2px solid {c['active_border']};
+        border-radius: 4px;
+        font-weight: bold;
+        padding: {m['nav_line_pad_v']}px {m['nav_line_pad_h']}px;
+        min-height: {m['nav_bar_height']}px;
+        max-height: {m['nav_bar_height']}px;
+    }}
+    QPushButton#filterRefreshButton:hover {{
+        background-color: rgba(137, 180, 250, 0.28);
+        border-color: {c['blue']};
+    }}
+    QPushButton#filterRefreshButton:pressed {{
+        background-color: rgba(137, 180, 250, 0.4);
+    }}
     QWidget#panelFilterBanner {{
         background-color: rgba(243, 139, 168, 0.12);
         border: 2px solid {c['red']};
@@ -687,27 +727,6 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     }}
     QCheckBox::indicator:checked {{
         background-color: {c['active_border']};
-        border-color: {c['active_border']};
-    }}
-    QPushButton#filterSubfoldersToggle {{
-        font-size: {fs['small']}pt;
-        padding: {m['nav_line_pad_v']}px {m['nav_line_pad_h']}px;
-        min-height: {m['nav_bar_height']}px;
-        max-height: {m['nav_bar_height']}px;
-        min-width: 0;
-    }}
-    QPushButton#filterSubfoldersToggle:checked {{
-        background-color: {c['active_border']};
-        color: {c['crust']};
-        border-color: {c['active_border']};
-        font-weight: bold;
-    }}
-    QPushButton#filterSubfoldersToggle:checked:hover {{
-        background-color: {c['blue']};
-        border-color: {c['blue']};
-    }}
-    QPushButton#filterSubfoldersToggle:checked:pressed {{
-        background-color: {c['button_press']};
         border-color: {c['active_border']};
     }}
 

@@ -121,7 +121,11 @@ class FilterOptionsDialog(QDialog):
         self._chk_subfolders = QCheckBox(
             "Include subfolders when listing (recursive search)", self
         )
-        name_form.addRow("", self._chk_subfolders)
+        self._chk_subfolders.setToolTip(
+            "When enabled, the file list includes every item under the current folder. "
+            "Large trees can take a while; a progress window with Cancel appears while scanning."
+        )
+        name_form.addRow("Search scope", self._chk_subfolders)
         name_box.setLayout(name_form)
         root.addWidget(name_box)
 
@@ -335,6 +339,7 @@ class FilterOptionsDialog(QDialog):
         if not self._validate():
             return
         self._file_panel.applyFilterState(self._state_dict())
+        self._load_from_panel()
 
     def _onOk(self):
         if not self._validate():

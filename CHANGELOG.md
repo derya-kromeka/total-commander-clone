@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.59] - 2026-08-10
+
+### Added
+
+- **Help → Publish Version to GitHub…**: When local `APP_VERSION` is newer than GitHub, commit (if the tree is dirty) and push with a normal (non-force) push. Prompts for remote URL, username, and PAT when needed; can save to `.git-account.*`.
+- **Check for Updates**: If your version is ahead of GitHub, offers **Publish to GitHub…** (startup checks stay quiet when local is ahead).
+
+### Safety
+
+- Publish never force-pushes. Rejected non-fast-forward pushes ask you to pull/merge first. Credentials are not stored in `settings.json`.
+
+## [0.4.58] - 2026-08-10
+
+### Added
+
+- **Filter banner Refresh**: When a filter is active, the banner includes a **Refresh** button that reloads the folder (and re-scans subfolders when that option is on), then re-applies all filter rules.
+
+### Changed
+
+- **Subfolders** is no longer a toolbar toggle; enable recursive search from **Settings** → Search scope (Include subfolders).
+- **Filter Settings** is a labeled toolbar button (with border and hover) instead of a small flat gear icon.
+
 ## [0.4.57] - 2026-07-22
 
 ### Added
