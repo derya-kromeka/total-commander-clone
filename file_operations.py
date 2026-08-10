@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QMutex, QWaitCondition
 
-from folder_stats import FolderSizeWorker
+from folder_stats import FolderSizeWorker, folderTreeStats
 
 
 # Conflict resolution choices (used between worker and main thread)
@@ -23,6 +23,8 @@ CONFLICT_OVERWRITE = "overwrite"
 CONFLICT_CANCEL = "cancel"
 CONFLICT_KEEP_BOTH = "keep_both"
 CONFLICT_SKIP = "skip"
+CONFLICT_OVERWRITE_IF_SAME = "overwrite_if_same"
+CONFLICT_SKIP_IF_SAME = "skip_if_same"
 
 # Sentinel returned by _askConflict when the user skips this item.
 _SKIP_ITEM = object()
@@ -85,28 +87,150 @@ def _sameVolume(path_a, path_b):
     )
 
 
+def _winLongPath(path):
+    """Windows extended-length path prefix (\\\\?\\ / \\\\?\\UNC\\)."""
+    if os.name != "nt" or not path:
+        return path
+    if path.startswith("\\\\?\\"):
+        return path
+    try:
+        abs_path = os.path.abspath(path)
+    except (OSError, ValueError):
+        abs_path = path
+    if abs_path.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + abs_path[2:]
+    return "\\\\?\\" + abs_path
+
+
+def _displayPath(path):
+    """Human-readable path without Windows \\\\?\\ prefix."""
+    if not path:
+        return ""
+    if path.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + path[8:]
+    if path.startswith("\\\\?\\"):
+        return path[4:]
+    return path
+
+
+def _pathCandidates(path):
+    """Ordered path forms to try for existence / stat."""
+    if not path or not str(path).strip():
+        return []
+    raw = str(path).strip()
+    out = []
+    try:
+        normalized = os.path.normpath(os.path.abspath(raw))
+    except (OSError, ValueError):
+        normalized = os.path.normpath(raw)
+    for c in (raw, normalized):
+        if c and c not in out:
+            out.append(c)
+    if os.name == "nt" and normalized:
+        long_p = _winLongPath(normalized)
+        if long_p and long_p not in out:
+            out.append(long_p)
+    return out
+
+
+def _normalizeFsPath(path):
+    """
+    Return a filesystem path that exists when possible (normpath/abspath,
+    Windows long-path fallback). Otherwise the best normalized form.
+    """
+    candidates = _pathCandidates(path)
+    if not candidates:
+        return ""
+    for c in candidates:
+        try:
+            if os.path.lexists(c) or os.path.exists(c):
+                return c
+        except OSError:
+            continue
+    return candidates[1] if len(candidates) > 1 else candidates[0]
+
+
 def _conflictSideInfo(path):
-    """Quick sync facts for one side of a conflict."""
+    """Quick sync facts for one side of a conflict (robust path lookup)."""
+    raw = (path or "").strip() if path else ""
     info = {
-        "path": path or "",
+        "path": raw,
+        "resolved_path": raw,
         "exists": False,
         "is_dir": False,
         "size": -1,
         "mod_time": None,
-        "type_label": "Missing",
+        "type_label": "Not found",
+        "error": None,
     }
-    if not path or not os.path.lexists(path):
+    if not raw:
+        info["error"] = "No path provided."
         return info
-    info["exists"] = True
-    try:
-        st = os.stat(path)
-        info["is_dir"] = os.path.isdir(path)
-        info["mod_time"] = st.st_mtime
-        info["size"] = -1 if info["is_dir"] else st.st_size
-        info["type_label"] = "Folder" if info["is_dir"] else "File"
-    except OSError:
-        info["type_label"] = "Unreadable"
+
+    candidates = _pathCandidates(raw)
+    last_err = None
+    for c in candidates:
+        try:
+            if not (os.path.lexists(c) or os.path.exists(c)):
+                continue
+            info["resolved_path"] = c
+            info["path"] = _displayPath(c)
+            info["exists"] = True
+            try:
+                st = os.stat(c)
+                info["is_dir"] = os.path.isdir(c)
+                info["mod_time"] = st.st_mtime
+                info["size"] = -1 if info["is_dir"] else st.st_size
+                info["type_label"] = "Folder" if info["is_dir"] else "File"
+                info["error"] = None
+                return info
+            except OSError as exc:
+                info["type_label"] = "Unreadable"
+                info["error"] = str(exc)
+                return info
+        except OSError as exc:
+            last_err = exc
+            continue
+
+    display = _displayPath(candidates[-1] if candidates else raw)
+    info["path"] = display
+    info["resolved_path"] = candidates[-1] if candidates else raw
+    if last_err:
+        info["error"] = str(last_err)
+    elif len(display) >= 240:
+        info["error"] = "Path not found (may exceed Windows path length limits)."
+    else:
+        info["error"] = "Path not found on disk."
     return info
+
+
+def _conflictSizeFileKey(path):
+    """
+    Return (total_bytes, file_count) for match policy, or None on failure.
+    Files: (size, 1). Folders: tree totals from folderTreeStats.
+    """
+    info = _conflictSideInfo(path)
+    if not info["exists"]:
+        return None
+    resolved = info["resolved_path"] or info["path"]
+    if info["is_dir"]:
+        stats = folderTreeStats(resolved)
+        if stats is None:
+            return None
+        total_bytes, file_count, _dir_count = stats
+        return total_bytes, file_count
+    if info["size"] < 0:
+        return None
+    return info["size"], 1
+
+
+def _conflictSidesMatch(source_path, dest_path):
+    """True when size and file count match (folders ignore subfolder count)."""
+    left = _conflictSizeFileKey(source_path)
+    right = _conflictSizeFileKey(dest_path)
+    if left is None or right is None:
+        return False
+    return left == right
 
 
 def _formatConflictTime(ts):
@@ -122,7 +246,7 @@ def _formatConflictTime(ts):
 # Class: ConflictDialog
 # Purpose: Modal dialog when an item already exists at destination.
 #          Side-by-side Source vs Destination context; Overwrite,
-#          Keep both, Skip this item, or Cancel the whole operation.
+#          Keep both, Skip, same-size bulk policies, or Cancel.
 # ============================================================
 class ConflictDialog(QDialog):
 
@@ -137,16 +261,20 @@ class ConflictDialog(QDialog):
 
         src = _conflictSideInfo(self._source_path)
         dst = _conflictSideInfo(self._dest_path)
+        self._src_info = src
+        self._dst_info = dst
         either_dir = src["is_dir"] or dst["is_dir"]
         self.setWindowTitle(
             "Item Already Exists" if either_dir else "File Already Exists"
         )
-        self.resize(780, 420)
+        self.resize(820, 460)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
-        name = os.path.basename(self._dest_path) or os.path.basename(self._source_path)
+        name = os.path.basename(dst["path"] or self._dest_path) or os.path.basename(
+            src["path"] or self._source_path
+        )
         op = (operation_name or "Copy").strip() or "Copy"
         intro = QLabel(
             f"{op}: \"{name}\" already exists at the destination.\n"
@@ -193,6 +321,27 @@ class ConflictDialog(QDialog):
         self._chk_apply_all = QCheckBox("Do this for all remaining conflicts")
         layout.addWidget(self._chk_apply_all)
 
+        match_row = QHBoxLayout()
+        self._btn_overwrite_if_same = QPushButton("Overwrite all matching size+files")
+        self._btn_overwrite_if_same.setToolTip(
+            "If this conflict matches on total size and file count, overwrite it "
+            "and auto-overwrite later conflicts that also match. Non-matching "
+            "conflicts still prompt."
+        )
+        self._btn_overwrite_if_same.clicked.connect(self._onOverwriteIfSame)
+        match_row.addWidget(self._btn_overwrite_if_same)
+
+        self._btn_skip_if_same = QPushButton("Skip all matching size+files")
+        self._btn_skip_if_same.setToolTip(
+            "If this conflict matches on total size and file count, skip it "
+            "and auto-skip later conflicts that also match. Non-matching "
+            "conflicts still prompt."
+        )
+        self._btn_skip_if_same.clicked.connect(self._onSkipIfSame)
+        match_row.addWidget(self._btn_skip_if_same)
+        match_row.addStretch()
+        layout.addLayout(match_row)
+
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
@@ -226,6 +375,7 @@ class ConflictDialog(QDialog):
 
         self._fillSides(src, dst)
         self._startFolderWorkers(src, dst)
+        self._updateMatchButtons()
 
     def _boldLabel(self, text):
         lbl = QLabel(f"<b>{text}</b>")
@@ -264,6 +414,10 @@ class ConflictDialog(QDialog):
             self._dst_labels["contents"].setText("—")
 
         diffs = []
+        if src.get("error") and not src["exists"]:
+            diffs.append(f"Source: {src['error']}")
+        if dst.get("error") and not dst["exists"]:
+            diffs.append(f"Destination: {dst['error']}")
         if src["exists"] and dst["exists"]:
             if src["is_dir"] != dst["is_dir"]:
                 diffs.append("Types differ (file vs folder).")
@@ -290,6 +444,10 @@ class ConflictDialog(QDialog):
             self._diff_label.setText("Differences: " + " ".join(diffs))
         elif self._pending_folder:
             self._diff_label.setText("Comparing folder trees…")
+        elif not src["exists"] or not dst["exists"]:
+            self._diff_label.setText(
+                "Cannot fully compare — one side was not found on disk."
+            )
         else:
             self._diff_label.setText(
                 "No obvious size/date differences in the fields above "
@@ -298,7 +456,7 @@ class ConflictDialog(QDialog):
 
     def _startFolderWorkers(self, src, dst):
         if src["exists"] and src["is_dir"]:
-            w = FolderSizeWorker(src["path"], self)
+            w = FolderSizeWorker(src["resolved_path"] or src["path"], self)
             w.finishedOk.connect(
                 lambda b, f, d: self._onStats("src", b, f, d)
             )
@@ -306,7 +464,7 @@ class ConflictDialog(QDialog):
             self._workers.append(w)
             w.start()
         if dst["exists"] and dst["is_dir"]:
-            w = FolderSizeWorker(dst["path"], self)
+            w = FolderSizeWorker(dst["resolved_path"] or dst["path"], self)
             w.finishedOk.connect(
                 lambda b, f, d: self._onStats("dst", b, f, d)
             )
@@ -328,6 +486,7 @@ class ConflictDialog(QDialog):
         else:
             self._dst_stats = stats
         self._updateFolderDiff()
+        self._updateMatchButtons()
 
     def _onStatsFail(self, side, msg):
         labels = self._src_labels if side == "src" else self._dst_labels
@@ -338,6 +497,7 @@ class ConflictDialog(QDialog):
         else:
             self._dst_stats = False
         self._updateFolderDiff()
+        self._updateMatchButtons()
 
     def _updateFolderDiff(self):
         if not self._pending_folder:
@@ -366,9 +526,60 @@ class ConflictDialog(QDialog):
             self._diff_label.setText("Differences: " + " ".join(parts))
         else:
             self._diff_label.setText(
-                "Folder trees match in total size, file count, and subfolder count "
+                "Folder trees match in total size and file count "
                 "(paths still collide)."
             )
+
+    def _currentMatchState(self):
+        """
+        Return True / False / None (still calculating) for size+file match.
+        """
+        src = self._src_info
+        dst = self._dst_info
+        if not src["exists"] or not dst["exists"]:
+            return False
+        if src["is_dir"] != dst["is_dir"]:
+            return False
+        if not src["is_dir"]:
+            return src["size"] >= 0 and src["size"] == dst["size"]
+        if self._src_stats is None or self._dst_stats is None:
+            return None
+        if (
+            self._src_stats is False
+            or self._dst_stats is False
+            or self._src_stats is True
+            or self._dst_stats is True
+        ):
+            return False
+        sb, sf, _sd = self._src_stats
+        db, df, _dd = self._dst_stats
+        return sb == db and sf == df
+
+    def _updateMatchButtons(self):
+        state = self._currentMatchState()
+        ready = state is not None
+        self._btn_overwrite_if_same.setEnabled(ready)
+        self._btn_skip_if_same.setEnabled(ready)
+
+    def _tryFinishIfSame(self, choice):
+        state = self._currentMatchState()
+        if state is None:
+            QMessageBox.information(
+                self,
+                "Still calculating",
+                "Folder sizes are still being calculated. Please wait a moment.",
+            )
+            return
+        if not state:
+            QMessageBox.information(
+                self,
+                "Not a match",
+                "This conflict does not match on total size and file count.\n"
+                "The bulk policy was not applied. Use Overwrite, Skip, or "
+                "Keep both for this item instead.",
+            )
+            return
+        self._finish(choice)
 
     def _finish(self, choice):
         self._choice = choice
@@ -384,6 +595,12 @@ class ConflictDialog(QDialog):
 
     def _onSkip(self):
         self._finish(CONFLICT_SKIP)
+
+    def _onOverwriteIfSame(self):
+        self._tryFinishIfSame(CONFLICT_OVERWRITE_IF_SAME)
+
+    def _onSkipIfSame(self):
+        self._tryFinishIfSame(CONFLICT_SKIP_IF_SAME)
 
     def _onCancel(self):
         self._finish(CONFLICT_CANCEL)
@@ -440,6 +657,7 @@ class FileOperationWorker(QThread):
         self._conflict_choice = None
         self._conflict_new_dest = None
         self._apply_to_all_choice = None
+        self._conflict_match_policy = None
         self._total_bytes = 0
         self._bytes_completed = 0
 
@@ -452,15 +670,26 @@ class FileOperationWorker(QThread):
     # --------------------------------------------------------
     # Method: setConflictResponse
     # Purpose: Called from the main thread after user chooses.
-    #          choice: OVERWRITE | CANCEL | KEEP_BOTH | SKIP
+    #          choice: OVERWRITE | CANCEL | KEEP_BOTH | SKIP |
+    #                  OVERWRITE_IF_SAME | SKIP_IF_SAME
     #          new_dest: used when choice is KEEP_BOTH (can be None to auto-rename).
     # --------------------------------------------------------
     def setConflictResponse(self, choice, new_dest=None, apply_to_all=False):
         self._conflict_mutex.lock()
-        self._conflict_choice = choice
-        self._conflict_new_dest = new_dest
-        if apply_to_all:
-            self._apply_to_all_choice = choice
+        if choice == CONFLICT_OVERWRITE_IF_SAME:
+            self._conflict_match_policy = CONFLICT_OVERWRITE_IF_SAME
+            self._conflict_choice = CONFLICT_OVERWRITE
+            self._conflict_new_dest = None
+        elif choice == CONFLICT_SKIP_IF_SAME:
+            self._conflict_match_policy = CONFLICT_SKIP_IF_SAME
+            self._conflict_choice = CONFLICT_SKIP
+            self._conflict_new_dest = None
+        else:
+            self._conflict_choice = choice
+            self._conflict_new_dest = new_dest
+            if apply_to_all:
+                self._apply_to_all_choice = choice
+                self._conflict_match_policy = None
         self._conflict_condition.wakeOne()
         self._conflict_mutex.unlock()
 
@@ -533,6 +762,9 @@ class FileOperationWorker(QThread):
     #          raises UserAbortError on Cancel.
     # --------------------------------------------------------
     def _askConflict(self, source_path, dest_path, file_name):
+        source_path = _normalizeFsPath(source_path) or source_path
+        dest_path = _normalizeFsPath(dest_path) or dest_path
+
         if self._apply_to_all_choice is not None:
             choice = self._apply_to_all_choice
             if choice == CONFLICT_CANCEL:
@@ -544,6 +776,13 @@ class FileOperationWorker(QThread):
             if choice == CONFLICT_KEEP_BOTH:
                 return _resolveConflictPath(dest_path)
             return dest_path
+
+        if self._conflict_match_policy:
+            if _conflictSidesMatch(source_path, dest_path):
+                if self._conflict_match_policy == CONFLICT_OVERWRITE_IF_SAME:
+                    return dest_path
+                if self._conflict_match_policy == CONFLICT_SKIP_IF_SAME:
+                    return _SKIP_ITEM
 
         self.conflictDetected.emit(source_path, dest_path, file_name)
         self._conflict_mutex.lock()
@@ -563,7 +802,6 @@ class FileOperationWorker(QThread):
         if choice == CONFLICT_KEEP_BOTH:
             return new_dest if new_dest else _resolveConflictPath(dest_path)
         return dest_path
-
     # --------------------------------------------------------
     # Method: _emitProgress
     # Purpose: Emit percent, current name, and detail (items + bytes).

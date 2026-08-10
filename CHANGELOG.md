@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.65] - 2026-08-10
+
+### Changed
+
+- **Conflict dialog robustness**: Source/destination lookup uses normalized and Windows long-path forms; missing sides show **Not found** with a clear reason instead of a blank “Missing”.
+
+### Added
+
+- **Overwrite all matching size+files** / **Skip all matching size+files**: When total size and file count match, apply that action and auto-resolve later matching conflicts (non-matching conflicts still prompt).
+
 ## [0.4.64] - 2026-08-10
 
 ### Removed

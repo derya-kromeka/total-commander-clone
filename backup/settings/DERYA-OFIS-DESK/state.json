@@ -152,7 +152,7 @@
     },
     "recent_paths": [],
     "left_panel": {
-        "current_path": "E:\\Video\\New folder\\OT\\Duplicates",
+        "current_path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts\\video_tools",
         "history": [
             "C:\\Users\\Derya",
             "G:\\",
@@ -1154,14 +1154,31 @@
             "E:\\Video\\New folder\\OT\\Archive\\Duo",
             "E:\\Video\\New folder\\OT\\Archive",
             "E:\\Video\\New folder\\OT",
-            "E:\\Video\\New folder\\OT\\Duplicates"
+            "E:\\Video\\New folder\\OT\\Duplicates",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\Scripts\\video_tools"
         ],
+        "column_widths": {
+            "name": 530,
+            "size": 86,
+            "type": 70,
+            "date_modified": 138
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1177,23 +1194,10 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 530,
-            "size": 86,
-            "type": 70,
-            "date_modified": 138
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     },
     "right_panel": {
-        "current_path": "E:\\Video\\New folder\\OT\\Archive",
+        "current_path": "E:\\Video\\New folder\\HTC-OT",
         "history": [
             "C:\\Users\\Derya",
             "C:\\Users\\Derya\\Downloads",
@@ -2030,21 +2034,41 @@
             "E:\\Video\\New folder",
             "E:\\Video\\New folder\\OT",
             "E:\\Video\\New folder\\OT\\Archive",
-            "E:\\Video\\New folder\\OT\\Archive\\Duo\\Duo-20100724-OT-GmNMQ2GceG-3MP\\output_1"
+            "E:\\Video\\New folder\\OT\\Archive\\Duo\\Duo-20100724-OT-GmNMQ2GceG-3MP\\output_1",
+            "C:\\Users\\Derya",
+            "E:\\",
+            "E:\\Video",
+            "E:\\Video\\New folder",
+            "E:\\Video\\New folder\\Esr-OT",
+            "E:\\Video\\New folder",
+            "E:\\Video\\New folder\\HTC-OT"
         ],
+        "column_widths": {
+            "name": 368,
+            "size": 100,
+            "type": 100,
+            "date_modified": 138
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
-        "filter_kind": "dirs",
-        "filter_text": "output",
+        "filter_kind": "all",
+        "filter_text": "",
         "filter_exclude_text": "",
         "filter_extensions": "",
         "filter_words_combine_and": true,
-        "filter_include_subfolders": true,
+        "filter_include_subfolders": false,
         "filter_advanced": {
             "size_enabled": false,
             "size_min": null,
@@ -2053,19 +2077,6 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 368,
-            "size": 100,
-            "type": 100,
-            "date_modified": 138
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     }
 }
