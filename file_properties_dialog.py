@@ -27,10 +27,15 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QSizePolicy,
 )
-from PyQt5.QtCore import QFileInfo, QMimeDatabase, Qt, QThread, pyqtSignal
+from PyQt5.QtCore import QFileInfo, QMimeDatabase, Qt
 from PyQt5.QtGui import QFont
 
 from file_panel import formatFileSize
+from folder_stats import (
+    FolderSizeWorker,
+    folderImmediateItemCount,
+    folderTreeStats as _folder_tree_stats,
+)
 
 
 # ------------------------------------------------------------
@@ -58,58 +63,7 @@ def _qdatetime_to_ts(qdt):
 
 # ------------------------------------------------------------
 def _folder_item_count(path):
-    try:
-        with os.scandir(path) as it:
-            return sum(1 for _ in it)
-    except OSError:
-        return None
-
-
-# ------------------------------------------------------------
-# Function: _folder_tree_stats
-# Purpose: Walk a folder tree; return (total_bytes, file_count, dir_count).
-# ------------------------------------------------------------
-def _folder_tree_stats(path):
-    total_bytes = 0
-    file_count = 0
-    dir_count = 0
-    try:
-        for root, dirs, files in os.walk(path):
-            dir_count += len(dirs)
-            for name in files:
-                file_count += 1
-                try:
-                    total_bytes += os.path.getsize(os.path.join(root, name))
-                except OSError:
-                    pass
-    except OSError:
-        return None
-    return total_bytes, file_count, dir_count
-
-
-# ------------------------------------------------------------
-# Class: FolderSizeWorker
-# Purpose: Compute folder tree size off the UI thread.
-# ------------------------------------------------------------
-class FolderSizeWorker(QThread):
-
-    finishedOk = pyqtSignal(int, int, int)  # bytes, files, dirs
-    failed = pyqtSignal(str)
-
-    def __init__(self, path, parent=None):
-        super().__init__(parent)
-        self._path = path
-
-    def run(self):
-        try:
-            stats = _folder_tree_stats(self._path)
-            if stats is None:
-                self.failed.emit("Could not read folder.")
-                return
-            total_bytes, file_count, dir_count = stats
-            self.finishedOk.emit(total_bytes, file_count, dir_count)
-        except Exception as exc:
-            self.failed.emit(str(exc))
+    return folderImmediateItemCount(path)
 
 
 # ------------------------------------------------------------

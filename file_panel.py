@@ -225,7 +225,7 @@ def _folder_immediate_files_size_bytes(path):
 # ------------------------------------------------------------
 # Helper: Rich HTML tooltip for file list rows (summary card)
 # ------------------------------------------------------------
-def build_entry_tooltip_html(entry):
+def build_entry_tooltip_html(entry, recursive=False):
     name = entry["name"]
     full = entry["full_path"]
     is_dir = entry["is_dir"]
@@ -234,11 +234,22 @@ def build_entry_tooltip_html(entry):
 
     esc_name = html.escape(name)
     esc_full = html.escape(full)
+    parent = os.path.dirname(full)
+    esc_parent = html.escape(parent) if parent else "—"
 
     rows_html = []
+    if recursive and name and ("\\" in name or "/" in name):
+        rows_html.append(
+            f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Relative</td>"
+            f"<td style='padding:2px 0;'>{esc_name}</td></tr>"
+        )
     rows_html.append(
-        f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Location</td>"
+        f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Full path</td>"
         f"<td style='padding:2px 0;'>{esc_full}</td></tr>"
+    )
+    rows_html.append(
+        f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Parent</td>"
+        f"<td style='padding:2px 0;'>{esc_parent}</td></tr>"
     )
     rows_html.append(
         f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Modified</td>"
@@ -251,20 +262,23 @@ def build_entry_tooltip_html(entry):
 
     title = "Folder" if is_dir else "File"
     icon = "&#128193;" if is_dir else "&#128196;"
+    display_title = html.escape(os.path.basename(full) if full else name)
 
     if is_dir:
         qb = _folder_immediate_files_size_bytes(full)
         if qb is not None:
             sz = formatFileSize(qb)
             rows_html.insert(
-                1,
+                2 if (recursive and name and ("\\" in name or "/" in name)) else 1,
                 f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Size</td>"
                 f"<td style='padding:2px 0;'>{html.escape(sz)} "
                 f"<span style='color:#888;font-size:11px;'>(files here only)</span></td></tr>",
             )
-        foot = ["Double-click to open this folder in the panel."]
-        if qb is not None:
-            foot.append("Size includes only files in this folder, not subfolders.")
+        foot = [
+            "Select this row for full tree size and file counts.",
+            "Use Compare with other panel for left/right comparison.",
+            "Double-click to open this folder in the panel.",
+        ]
         body_extra = (
             "<p style='margin:8px 0 0 0;color:#888;font-size:11px;'>"
             + "<br/>".join(foot)
@@ -272,8 +286,9 @@ def build_entry_tooltip_html(entry):
         )
     else:
         sz = formatFileSize(entry["size"])
+        insert_at = 2 if (recursive and name and ("\\" in name or "/" in name)) else 1
         rows_html.insert(
-            1,
+            insert_at,
             f"<tr><td style='color:#aaa;padding:2px 10px 2px 0;'>Size</td>"
             f"<td style='padding:2px 0;'>{html.escape(sz)}</td></tr>",
         )
@@ -298,7 +313,8 @@ def build_entry_tooltip_html(entry):
             )
         body_extra = (
             "<p style='margin:8px 0 0 0;color:#888;font-size:11px;'>"
-            "Double-click to open with the default application.</p>"
+            "Double-click to open with the default application. "
+            "Select the row for path details; use Compare for left/right.</p>"
         )
 
     table = (
@@ -309,9 +325,9 @@ def build_entry_tooltip_html(entry):
 
     return (
         "<html><head/><body style='color:#dce0ee;'>"
-        f"<div style='min-width:280px;max-width:480px;'>"
+        f"<div style='min-width:280px;max-width:520px;'>"
         f"<div style='font-size:13px;font-weight:600;margin-bottom:6px;'>"
-        f"{icon} {esc_name} <span style='color:#888;font-weight:normal;'>"
+        f"{icon} {display_title} <span style='color:#888;font-weight:normal;'>"
         f"({title})</span></div>"
         f"<div style='height:1px;background:#555;margin:4px 0 8px 0;'></div>"
         f"{table}"
@@ -754,7 +770,7 @@ class FileSystemModel(QAbstractTableModel):
         col = index.column()
 
         if role == Qt.ToolTipRole:
-            return build_entry_tooltip_html(entry)
+            return build_entry_tooltip_html(entry, recursive=self._recursive)
 
         if role == Qt.DisplayRole:
             if col == 0:
@@ -1385,6 +1401,7 @@ class FilePanel(QWidget):
     folderCreated = pyqtSignal(str)
     fileDoubleClicked = pyqtSignal(dict)
     selectionChanged = pyqtSignal()
+    compareRequested = pyqtSignal()
     filesDropped = pyqtSignal(list, str, bool)
     activated = pyqtSignal()
     dateModifiedFormatChanged = pyqtSignal(str)
@@ -1702,6 +1719,45 @@ class FilePanel(QWidget):
         banner_layout.addWidget(self._filter_banner_btn, 0, Qt.AlignVCenter)
         self._filter_banner.setVisible(False)
         layout.addWidget(self._filter_banner)
+
+        # --- Selection details strip (single selection context) ---
+        self._selection_details = QWidget()
+        self._selection_details.setObjectName("panelSelectionDetails")
+        details_layout = QVBoxLayout(self._selection_details)
+        details_layout.setContentsMargins(10, 6, 10, 6)
+        details_layout.setSpacing(4)
+        path_row = QHBoxLayout()
+        path_row.setSpacing(8)
+        self._selection_path_label = QLabel()
+        self._selection_path_label.setObjectName("panelSelectionDetailsPath")
+        self._selection_path_label.setWordWrap(True)
+        self._selection_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        path_row.addWidget(self._selection_path_label, 1)
+        self._btn_copy_selection_path = QPushButton("Copy path")
+        self._btn_copy_selection_path.setObjectName("selectionDetailsButton")
+        self._btn_copy_selection_path.setAutoDefault(False)
+        self._btn_copy_selection_path.setDefault(False)
+        self._btn_copy_selection_path.setToolTip("Copy the full path of the selected item.")
+        self._btn_copy_selection_path.clicked.connect(self._onCopySelectionPath)
+        path_row.addWidget(self._btn_copy_selection_path, 0, Qt.AlignTop)
+        self._btn_compare_selection = QPushButton("Compare\u2026")
+        self._btn_compare_selection.setObjectName("selectionDetailsButton")
+        self._btn_compare_selection.setAutoDefault(False)
+        self._btn_compare_selection.setDefault(False)
+        self._btn_compare_selection.setToolTip(
+            "Compare this item with the same relative path (or selection) on the other panel."
+        )
+        self._btn_compare_selection.clicked.connect(self.compareRequested.emit)
+        path_row.addWidget(self._btn_compare_selection, 0, Qt.AlignTop)
+        details_layout.addLayout(path_row)
+        self._selection_meta_label = QLabel()
+        self._selection_meta_label.setObjectName("panelSelectionDetailsMeta")
+        self._selection_meta_label.setWordWrap(True)
+        details_layout.addWidget(self._selection_meta_label)
+        self._selection_details.setVisible(False)
+        self._selection_stats_worker = None
+        self._selection_stats_path = ""
+        layout.addWidget(self._selection_details)
 
         # --- File table ---
         self._table = FileTableView(self)
@@ -3330,7 +3386,103 @@ class FilePanel(QWidget):
         self.filesDropped.emit(file_paths, drop_target, is_copy)
 
     def _onSelectionChanged(self):
+        self._updateSelectionDetails()
         self.selectionChanged.emit()
+
+    # --------------------------------------------------------
+    # Method: _cancelSelectionStatsWorker
+    # --------------------------------------------------------
+    def _cancelSelectionStatsWorker(self):
+        thr = self._selection_stats_worker
+        self._selection_stats_worker = None
+        self._selection_stats_path = ""
+        if thr is None:
+            return
+        try:
+            thr.cancel()
+            thr.finishedOk.disconnect(self._onSelectionStatsReady)
+            thr.failed.disconnect(self._onSelectionStatsFailed)
+        except (TypeError, RuntimeError):
+            pass
+        thr.deleteLater()
+
+    # --------------------------------------------------------
+    # Method: _updateSelectionDetails
+    # Purpose: Show full path + size/counts for a single selection.
+    # --------------------------------------------------------
+    def _updateSelectionDetails(self):
+        entries = self.selectedEntries()
+        if len(entries) != 1:
+            self._cancelSelectionStatsWorker()
+            self._selection_details.setVisible(False)
+            return
+
+        entry = entries[0]
+        full = entry.get("full_path") or ""
+        name = entry.get("name") or ""
+        is_dir = bool(entry.get("is_dir"))
+        lines = [f"Full path: {full}"]
+        if self._source_model.isRecursive() and name and name != os.path.basename(full):
+            lines.append(f"Relative: {name}")
+        self._selection_path_label.setText("\n".join(lines))
+        self._selection_details.setVisible(True)
+
+        if not is_dir:
+            self._cancelSelectionStatsWorker()
+            sz = entry.get("size", -1)
+            from datetime import datetime
+
+            try:
+                mod = datetime.fromtimestamp(entry.get("mod_time") or 0).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+            except (OSError, ValueError, OverflowError):
+                mod = "—"
+            self._selection_meta_label.setText(
+                f"File · Size: {formatFileSize(sz) if sz >= 0 else '—'} · Modified: {mod}"
+            )
+            return
+
+        # Folder: async tree stats
+        if self._selection_stats_path == full and self._selection_stats_worker is not None:
+            return
+        self._cancelSelectionStatsWorker()
+        self._selection_meta_label.setText("Folder · Calculating size and file counts…")
+        self._selection_stats_path = full
+        from folder_stats import FolderSizeWorker
+
+        worker = FolderSizeWorker(full, self)
+        worker.finishedOk.connect(self._onSelectionStatsReady)
+        worker.failed.connect(self._onSelectionStatsFailed)
+        self._selection_stats_worker = worker
+        worker.start()
+
+    def _onSelectionStatsReady(self, total_bytes, file_count, dir_count):
+        worker = self.sender()
+        if worker is not self._selection_stats_worker:
+            return
+        self._selection_meta_label.setText(
+            f"Folder · {file_count:,} file(s), {dir_count:,} subfolder(s) · "
+            f"Total size: {formatFileSize(total_bytes)} ({total_bytes:,} bytes)"
+        )
+        self._selection_stats_worker = None
+
+    def _onSelectionStatsFailed(self, message):
+        worker = self.sender()
+        if worker is not self._selection_stats_worker:
+            return
+        self._selection_meta_label.setText(
+            f"Folder · Could not calculate size ({message or 'error'})"
+        )
+        self._selection_stats_worker = None
+
+    def _onCopySelectionPath(self):
+        entries = self.selectedEntries()
+        if len(entries) != 1:
+            return
+        path = entries[0].get("full_path") or ""
+        if path:
+            QApplication.clipboard().setText(path)
 
     def _updateNavButtons(self):
         self._btn_back.setEnabled(self._history_index > 0)

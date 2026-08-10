@@ -796,6 +796,12 @@ class FileManagerApp(QMainWindow):
 
         self._left_panel.selectionChanged.connect(self._updateStatusBar)
         self._right_panel.selectionChanged.connect(self._updateStatusBar)
+        self._left_panel.compareRequested.connect(
+            lambda: self._onCompareWithOtherPanel(self._left_panel)
+        )
+        self._right_panel.compareRequested.connect(
+            lambda: self._onCompareWithOtherPanel(self._right_panel)
+        )
 
         self._left_panel.dateModifiedFormatChanged.connect(self._onDateModifiedFormatChanged)
         self._right_panel.dateModifiedFormatChanged.connect(self._onDateModifiedFormatChanged)
@@ -888,6 +894,13 @@ class FileManagerApp(QMainWindow):
         act_full_paths = special_menu.addAction("Copy full paths")
         act_full_paths.setToolTip("Copy absolute paths of the selection.")
         act_full_paths.triggered.connect(self._onSpecialCopyFullPaths)
+        special_menu.addSeparator()
+        act_compare = special_menu.addAction("Compare with other panel…")
+        act_compare.setToolTip(
+            "Compare the selected item with the matching path (or selection) "
+            "on the other panel: size, file counts, and modified time."
+        )
+        act_compare.triggered.connect(lambda: self._onCompareWithOtherPanel())
         self._btn_special.setMenu(special_menu)
         layout.addWidget(self._btn_special)
 
@@ -1323,6 +1336,75 @@ class FileManagerApp(QMainWindow):
             return
         QApplication.clipboard().setText("\n".join(paths))
         self._showStatus(f"Copied {len(paths)} full path(s).")
+
+    # --------------------------------------------------------
+    # Method: _onCompareWithOtherPanel
+    # Purpose: Open side-by-side compare for active selection vs
+    #          counterpart under the other panel (or its selection).
+    # --------------------------------------------------------
+    def _onCompareWithOtherPanel(self, panel=None):
+        from compare_paths_dialog import ComparePathsDialog
+
+        active = panel or self._active_panel
+        if not active:
+            return
+        self._setActivePanel(active)
+        entries = active.selectedEntries()
+        if not entries:
+            self._showStatus("Select an item to compare.")
+            return
+        if len(entries) > 1:
+            self._showStatus("Select a single item to compare.")
+            return
+
+        entry = entries[0]
+        left_path = entry.get("full_path") or ""
+        other = self._getInactivePanel()
+        other_root = other.currentPath() if other else ""
+        right_path = ""
+
+        # Prefer same relative path under the other panel's root.
+        rel = ""
+        if active.sourceModel().isRecursive():
+            rel = (entry.get("name") or "").replace("/", os.sep).strip()
+        if not rel:
+            try:
+                root = active.currentPath() or ""
+                if root and left_path:
+                    rel = os.path.relpath(left_path, root).replace("/", os.sep)
+                    if rel.startswith(".." + os.sep) or rel == "..":
+                        rel = ""
+            except ValueError:
+                rel = ""
+        if other_root and rel and rel not in (".", ""):
+            parts = [p for p in rel.split(os.sep) if p and p != "."]
+            if parts and ".." not in parts:
+                right_path = os.path.normpath(os.path.join(other_root, *parts))
+
+        # Fall back to other panel's single selection.
+        if not right_path or not os.path.lexists(right_path):
+            other_entries = other.selectedEntries() if other else []
+            if len(other_entries) == 1:
+                right_path = other_entries[0].get("full_path") or right_path
+
+        if not right_path:
+            QMessageBox.information(
+                self,
+                "Compare with other panel",
+                "Could not resolve a counterpart on the other panel.\n\n"
+                "Open the matching folder on the other side (same relative path "
+                "under that panel’s root), or select one item there to compare.",
+            )
+            return
+
+        dlg = ComparePathsDialog(
+            left_path,
+            right_path,
+            left_title="Active panel",
+            right_title="Other panel",
+            parent=self,
+        )
+        dlg.exec_()
 
     def _onDelete(self):
         if not self._active_panel or self._active_panel.isRenaming():
@@ -2145,6 +2227,15 @@ class FileManagerApp(QMainWindow):
                 "Move to the other panel while recreating paths under this panel’s folder."
             )
             move_struct_action.triggered.connect(self._onSpecialMoveKeepStructure)
+
+            compare_action = menu.addAction("Compare with Other Panel…")
+            compare_action.setToolTip(
+                "Compare with other panel\n\n"
+                "Compare this item’s path, size, and file counts with the other panel."
+            )
+            compare_action.triggered.connect(
+                lambda: self._onCompareWithOtherPanel(panel)
+            )
 
             menu.addSeparator()
 

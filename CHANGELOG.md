@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.62] - 2026-08-10
+
+### Added
+
+- **Selection details strip**: Selecting one item shows full path (and relative path in Subfolders mode), plus async folder tree size/file/subfolder counts. **Copy path** and **Compare…** buttons on the strip.
+- **Compare with other panel**: Context menu and SPECIAL menu open a side-by-side compare (path, exists, type, modified, tree size/counts) using the same relative path under the other panel’s root when possible.
+- Richer row tooltips: full path, relative path, parent folder (no deep scan on hover).
+
 ## [0.4.61] - 2026-08-10
 
 ### Added

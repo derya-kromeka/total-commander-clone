@@ -456,6 +456,33 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
         font-size: {fs['small']}pt;
         background: transparent;
     }}
+    QWidget#panelSelectionDetails {{
+        background-color: rgba(137, 180, 250, 0.10);
+        border: 1px solid {c['border']};
+        border-radius: 5px;
+    }}
+    QLabel#panelSelectionDetailsPath {{
+        color: {c['text']};
+        font-size: {fs['small']}pt;
+        background: transparent;
+    }}
+    QLabel#panelSelectionDetailsMeta {{
+        color: {c['subtext0']};
+        font-size: {fs['small']}pt;
+        background: transparent;
+    }}
+    QPushButton#selectionDetailsButton {{
+        color: {c['text']};
+        background-color: {c['button']};
+        border: 1px solid {c['border']};
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: {fs['small']}pt;
+    }}
+    QPushButton#selectionDetailsButton:hover {{
+        background-color: {c['button_hover']};
+        border-color: {c['active_border']};
+    }}
     QLineEdit#panelRenameEdit {{
         background-color: {c['selection']};
         color: {c['text']};

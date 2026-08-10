@@ -1156,12 +1156,25 @@
             "E:\\Video\\New folder\\OT",
             "E:\\Video\\New folder\\OT\\Duplicates"
         ],
+        "column_widths": {
+            "name": 530,
+            "size": 86,
+            "type": 70,
+            "date_modified": 138
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -1177,20 +1190,7 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 530,
-            "size": 86,
-            "type": 70,
-            "date_modified": 138
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     },
     "right_panel": {
         "current_path": "E:\\Video\\New folder\\OT\\Archive",
@@ -2032,12 +2032,25 @@
             "E:\\Video\\New folder\\OT\\Archive",
             "E:\\Video\\New folder\\OT\\Archive\\Duo\\Duo-20100724-OT-GmNMQ2GceG-3MP\\output_1"
         ],
+        "column_widths": {
+            "name": 368,
+            "size": 100,
+            "type": 100,
+            "date_modified": 138
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "dirs",
         "filter_text": "output",
@@ -2053,19 +2066,6 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 368,
-            "size": 100,
-            "type": 100,
-            "date_modified": 138
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     }
 }
