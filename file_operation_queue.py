@@ -15,7 +15,6 @@ from PyQt5.QtWidgets import QDialog
 from file_operations import (
     FileOperationWorker,
     ConflictDialog,
-    CONFLICT_OVERWRITE,
     CONFLICT_CANCEL,
     CONFLICT_KEEP_BOTH,
     _resolveConflictPath,
@@ -257,15 +256,14 @@ class FileOperationQueue(QObject):
         task = self._current_task
         if not task or not self._worker:
             return
-        dest_dir = os.path.dirname(dest_path)
         op_name = "Copy" if task.operation == FileOperationWorker.OPERATION_COPY else "Move"
         parent = self._parent_window
-        dialog = ConflictDialog(file_name, dest_dir, op_name, parent)
+        dialog = ConflictDialog(source_path, dest_path, op_name, parent)
         if dialog.exec_() != QDialog.Accepted:
             self._worker.setConflictResponse(CONFLICT_CANCEL, apply_to_all=False)
             return
         choice, apply_to_all = dialog.getChoice()
-        if not choice:
+        if not choice or choice == CONFLICT_CANCEL:
             self._worker.setConflictResponse(CONFLICT_CANCEL, apply_to_all=False)
             return
         new_dest = None

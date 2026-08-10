@@ -1,24 +1,31 @@
 """
 Total Commander Clone - File Operations
 Provides threaded copy, move, and delete operations with
-progress dialogs, conflict resolution (overwrite/cancel/keep both),
+progress dialogs, conflict resolution (overwrite/cancel/keep both/skip),
 and proper error handling.
 """
 
 import os
 import shutil
+from datetime import datetime
 
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar,
-    QPushButton, QMessageBox, QApplication, QCheckBox,
+    QPushButton, QMessageBox, QApplication, QCheckBox, QGridLayout,
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QMutex, QWaitCondition
+
+from folder_stats import FolderSizeWorker
 
 
 # Conflict resolution choices (used between worker and main thread)
 CONFLICT_OVERWRITE = "overwrite"
 CONFLICT_CANCEL = "cancel"
 CONFLICT_KEEP_BOTH = "keep_both"
+CONFLICT_SKIP = "skip"
+
+# Sentinel returned by _askConflict when the user skips this item.
+_SKIP_ITEM = object()
 
 
 class UserAbortError(Exception):
@@ -78,70 +85,324 @@ def _sameVolume(path_a, path_b):
     )
 
 
+def _conflictSideInfo(path):
+    """Quick sync facts for one side of a conflict."""
+    info = {
+        "path": path or "",
+        "exists": False,
+        "is_dir": False,
+        "size": -1,
+        "mod_time": None,
+        "type_label": "Missing",
+    }
+    if not path or not os.path.lexists(path):
+        return info
+    info["exists"] = True
+    try:
+        st = os.stat(path)
+        info["is_dir"] = os.path.isdir(path)
+        info["mod_time"] = st.st_mtime
+        info["size"] = -1 if info["is_dir"] else st.st_size
+        info["type_label"] = "Folder" if info["is_dir"] else "File"
+    except OSError:
+        info["type_label"] = "Unreadable"
+    return info
+
+
+def _formatConflictTime(ts):
+    if ts is None or ts <= 0:
+        return "—"
+    try:
+        return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+    except (OSError, ValueError, OverflowError):
+        return "—"
+
+
 # ============================================================
 # Class: ConflictDialog
-# Purpose: Modal dialog when a file already exists at destination.
-#          Options: Overwrite, Cancel operation, Keep both (rename).
-#          Checkbox: "Do this for all files".
+# Purpose: Modal dialog when an item already exists at destination.
+#          Side-by-side Source vs Destination context; Overwrite,
+#          Keep both, Skip this item, or Cancel the whole operation.
 # ============================================================
 class ConflictDialog(QDialog):
 
-    def __init__(self, file_name, dest_dir, operation_name, parent=None):
+    def __init__(self, source_path, dest_path, operation_name, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("File Already Exists")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self._choice = None
-        self._new_dest_path = None
         self._apply_to_all = False
+        self._workers = []
+        self._source_path = source_path or ""
+        self._dest_path = dest_path or ""
+
+        src = _conflictSideInfo(self._source_path)
+        dst = _conflictSideInfo(self._dest_path)
+        either_dir = src["is_dir"] or dst["is_dir"]
+        self.setWindowTitle(
+            "Item Already Exists" if either_dir else "File Already Exists"
+        )
+        self.resize(780, 420)
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
 
-        msg = QLabel(
-            f"A file named \"{file_name}\" already exists in the destination.\n"
-            f"What do you want to do?"
+        name = os.path.basename(self._dest_path) or os.path.basename(self._source_path)
+        op = (operation_name or "Copy").strip() or "Copy"
+        intro = QLabel(
+            f"{op}: \"{name}\" already exists at the destination.\n"
+            "Compare source and destination below, then choose what to do."
         )
-        msg.setWordWrap(True)
-        layout.addWidget(msg)
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
 
-        self._chk_apply_all = QCheckBox("Do this for all files")
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(6)
+
+        grid.addWidget(self._boldLabel("Source (incoming)"), 0, 1)
+        grid.addWidget(self._boldLabel("Destination (existing)"), 0, 2)
+
+        self._src_labels = {}
+        self._dst_labels = {}
+        fields = [
+            ("Path", "path"),
+            ("Type", "type"),
+            ("Modified", "mod"),
+            ("Size", "size"),
+            ("Contents", "contents"),
+        ]
+        for row, (title, key) in enumerate(fields, start=1):
+            grid.addWidget(QLabel(title), row, 0, Qt.AlignTop)
+            left = QLabel()
+            left.setWordWrap(True)
+            left.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            right = QLabel()
+            right.setWordWrap(True)
+            right.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            grid.addWidget(left, row, 1, Qt.AlignTop)
+            grid.addWidget(right, row, 2, Qt.AlignTop)
+            self._src_labels[key] = left
+            self._dst_labels[key] = right
+
+        layout.addLayout(grid)
+
+        self._diff_label = QLabel()
+        self._diff_label.setWordWrap(True)
+        layout.addWidget(self._diff_label)
+
+        self._chk_apply_all = QCheckBox("Do this for all remaining conflicts")
         layout.addWidget(self._chk_apply_all)
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
         self._btn_overwrite = QPushButton("Overwrite")
+        self._btn_overwrite.setToolTip(
+            "Replace the destination with the source."
+        )
         self._btn_overwrite.clicked.connect(self._onOverwrite)
         btn_layout.addWidget(self._btn_overwrite)
 
         self._btn_keep_both = QPushButton("Keep both")
-        self._btn_keep_both.setToolTip("Keep the existing file and copy with a new name")
+        self._btn_keep_both.setToolTip(
+            "Keep the existing item and write the source under a new name."
+        )
         self._btn_keep_both.clicked.connect(self._onKeepBoth)
         btn_layout.addWidget(self._btn_keep_both)
 
+        self._btn_skip = QPushButton("Skip")
+        self._btn_skip.setToolTip(
+            "Leave the destination unchanged and continue with the next item."
+        )
+        self._btn_skip.clicked.connect(self._onSkip)
+        btn_layout.addWidget(self._btn_skip)
+
         self._btn_cancel = QPushButton("Cancel")
+        self._btn_cancel.setToolTip("Abort the entire copy/move operation.")
         self._btn_cancel.clicked.connect(self._onCancel)
         btn_layout.addWidget(self._btn_cancel)
 
         layout.addLayout(btn_layout)
 
-    def _onOverwrite(self):
-        self._choice = CONFLICT_OVERWRITE
+        self._fillSides(src, dst)
+        self._startFolderWorkers(src, dst)
+
+    def _boldLabel(self, text):
+        lbl = QLabel(f"<b>{text}</b>")
+        return lbl
+
+    def _fillSides(self, src, dst):
+        self._src_labels["path"].setText(src["path"] or "—")
+        self._dst_labels["path"].setText(dst["path"] or "—")
+        self._src_labels["type"].setText(src["type_label"])
+        self._dst_labels["type"].setText(dst["type_label"])
+        self._src_labels["mod"].setText(_formatConflictTime(src.get("mod_time")))
+        self._dst_labels["mod"].setText(_formatConflictTime(dst.get("mod_time")))
+
+        if src["exists"] and not src["is_dir"]:
+            self._src_labels["size"].setText(
+                f"{_formatByteSize(src['size'])}  ({src['size']:,} bytes)"
+            )
+            self._src_labels["contents"].setText("—")
+        elif src["exists"] and src["is_dir"]:
+            self._src_labels["size"].setText("Calculating…")
+            self._src_labels["contents"].setText("Calculating…")
+        else:
+            self._src_labels["size"].setText("—")
+            self._src_labels["contents"].setText("—")
+
+        if dst["exists"] and not dst["is_dir"]:
+            self._dst_labels["size"].setText(
+                f"{_formatByteSize(dst['size'])}  ({dst['size']:,} bytes)"
+            )
+            self._dst_labels["contents"].setText("—")
+        elif dst["exists"] and dst["is_dir"]:
+            self._dst_labels["size"].setText("Calculating…")
+            self._dst_labels["contents"].setText("Calculating…")
+        else:
+            self._dst_labels["size"].setText("—")
+            self._dst_labels["contents"].setText("—")
+
+        diffs = []
+        if src["exists"] and dst["exists"]:
+            if src["is_dir"] != dst["is_dir"]:
+                diffs.append("Types differ (file vs folder).")
+            if (
+                not src["is_dir"]
+                and not dst["is_dir"]
+                and src["size"] != dst["size"]
+            ):
+                diffs.append(
+                    f"File sizes differ: {_formatByteSize(src['size'])} vs "
+                    f"{_formatByteSize(dst['size'])}."
+                )
+            if src.get("mod_time") and dst.get("mod_time"):
+                if abs(src["mod_time"] - dst["mod_time"]) >= 1.0:
+                    diffs.append("Modified times differ.")
+        self._pending_folder = (
+            src["exists"]
+            and dst["exists"]
+            and (src["is_dir"] or dst["is_dir"])
+        )
+        self._src_stats = None if (src["exists"] and src["is_dir"]) else True
+        self._dst_stats = None if (dst["exists"] and dst["is_dir"]) else True
+        if diffs:
+            self._diff_label.setText("Differences: " + " ".join(diffs))
+        elif self._pending_folder:
+            self._diff_label.setText("Comparing folder trees…")
+        else:
+            self._diff_label.setText(
+                "No obvious size/date differences in the fields above "
+                "(names still collide at the destination)."
+            )
+
+    def _startFolderWorkers(self, src, dst):
+        if src["exists"] and src["is_dir"]:
+            w = FolderSizeWorker(src["path"], self)
+            w.finishedOk.connect(
+                lambda b, f, d: self._onStats("src", b, f, d)
+            )
+            w.failed.connect(lambda msg: self._onStatsFail("src", msg))
+            self._workers.append(w)
+            w.start()
+        if dst["exists"] and dst["is_dir"]:
+            w = FolderSizeWorker(dst["path"], self)
+            w.finishedOk.connect(
+                lambda b, f, d: self._onStats("dst", b, f, d)
+            )
+            w.failed.connect(lambda msg: self._onStatsFail("dst", msg))
+            self._workers.append(w)
+            w.start()
+
+    def _onStats(self, side, total_bytes, file_count, dir_count):
+        labels = self._src_labels if side == "src" else self._dst_labels
+        labels["size"].setText(
+            f"{_formatByteSize(total_bytes)}  ({total_bytes:,} bytes)"
+        )
+        labels["contents"].setText(
+            f"{file_count:,} file(s), {dir_count:,} subfolder(s)"
+        )
+        stats = (total_bytes, file_count, dir_count)
+        if side == "src":
+            self._src_stats = stats
+        else:
+            self._dst_stats = stats
+        self._updateFolderDiff()
+
+    def _onStatsFail(self, side, msg):
+        labels = self._src_labels if side == "src" else self._dst_labels
+        labels["size"].setText("—")
+        labels["contents"].setText(msg or "Failed")
+        if side == "src":
+            self._src_stats = False
+        else:
+            self._dst_stats = False
+        self._updateFolderDiff()
+
+    def _updateFolderDiff(self):
+        if not self._pending_folder:
+            return
+        if self._src_stats is None or self._dst_stats is None:
+            return
+        if self._src_stats is False or self._dst_stats is False:
+            self._diff_label.setText(
+                "Could not fully compare folder tree sizes on one or both sides."
+            )
+            return
+        if self._src_stats is True or self._dst_stats is True:
+            return
+        sb, sf, sd = self._src_stats
+        db, df, dd = self._dst_stats
+        parts = []
+        if sb != db:
+            parts.append(
+                f"Total size differs: {_formatByteSize(sb)} vs {_formatByteSize(db)}."
+            )
+        if sf != df:
+            parts.append(f"File count differs: {sf:,} vs {df:,}.")
+        if sd != dd:
+            parts.append(f"Subfolder count differs: {sd:,} vs {dd:,}.")
+        if parts:
+            self._diff_label.setText("Differences: " + " ".join(parts))
+        else:
+            self._diff_label.setText(
+                "Folder trees match in total size, file count, and subfolder count "
+                "(paths still collide)."
+            )
+
+    def _finish(self, choice):
+        self._choice = choice
         self._apply_to_all = self._chk_apply_all.isChecked()
+        self._stopWorkers()
         self.accept()
+
+    def _onOverwrite(self):
+        self._finish(CONFLICT_OVERWRITE)
 
     def _onKeepBoth(self):
-        self._choice = CONFLICT_KEEP_BOTH
-        self._apply_to_all = self._chk_apply_all.isChecked()
-        self.accept()
+        self._finish(CONFLICT_KEEP_BOTH)
+
+    def _onSkip(self):
+        self._finish(CONFLICT_SKIP)
 
     def _onCancel(self):
-        self._choice = CONFLICT_CANCEL
-        self._apply_to_all = self._chk_apply_all.isChecked()
-        self.accept()
+        self._finish(CONFLICT_CANCEL)
+
+    def _stopWorkers(self):
+        for w in self._workers:
+            try:
+                w.cancel()
+                w.wait(1500)
+            except Exception:
+                pass
+        self._workers = []
+
+    def closeEvent(self, event):
+        self._stopWorkers()
+        super().closeEvent(event)
 
     def getChoice(self):
-        """Returns (choice, apply_to_all). choice is CONFLICT_OVERWRITE, CONFLICT_CANCEL, or CONFLICT_KEEP_BOTH."""
+        """Returns (choice, apply_to_all)."""
         return self._choice, self._apply_to_all
 
 
@@ -191,7 +452,7 @@ class FileOperationWorker(QThread):
     # --------------------------------------------------------
     # Method: setConflictResponse
     # Purpose: Called from the main thread after user chooses.
-    #          choice: CONFLICT_OVERWRITE | CONFLICT_CANCEL | CONFLICT_KEEP_BOTH
+    #          choice: OVERWRITE | CANCEL | KEEP_BOTH | SKIP
     #          new_dest: used when choice is KEEP_BOTH (can be None to auto-rename).
     # --------------------------------------------------------
     def setConflictResponse(self, choice, new_dest=None, apply_to_all=False):
@@ -268,13 +529,16 @@ class FileOperationWorker(QThread):
     # --------------------------------------------------------
     # Method: _askConflict
     # Purpose: Emit signal and block until main thread sets response.
-    # Returns: (dest_path to use, or None if operation should be cancelled)
+    # Returns: dest path string, _SKIP_ITEM to leave dest alone, or
+    #          raises UserAbortError on Cancel.
     # --------------------------------------------------------
     def _askConflict(self, source_path, dest_path, file_name):
         if self._apply_to_all_choice is not None:
             choice = self._apply_to_all_choice
             if choice == CONFLICT_CANCEL:
                 raise UserAbortError()
+            if choice == CONFLICT_SKIP:
+                return _SKIP_ITEM
             if choice == CONFLICT_OVERWRITE:
                 return dest_path
             if choice == CONFLICT_KEEP_BOTH:
@@ -290,8 +554,10 @@ class FileOperationWorker(QThread):
         self._conflict_new_dest = None
         self._conflict_mutex.unlock()
 
-        if choice == CONFLICT_CANCEL:
+        if choice == CONFLICT_CANCEL or choice is None:
             raise UserAbortError()
+        if choice == CONFLICT_SKIP:
+            return _SKIP_ITEM
         if choice == CONFLICT_OVERWRITE:
             return dest_path
         if choice == CONFLICT_KEEP_BOTH:
@@ -442,9 +708,11 @@ class FileOperationWorker(QThread):
         dest_path, name = self._destPathForItem(source, dest_dir, relative_path)
 
         if os.path.exists(dest_path):
-            dest_path = self._askConflict(source, dest_path, name)
-            if dest_path is None:
-                raise UserAbortError()
+            resolved = self._askConflict(source, dest_path, name)
+            if resolved is _SKIP_ITEM:
+                self._finishItemProgress(source, name, item_index, total_items)
+                return
+            dest_path = resolved
             parent = os.path.dirname(dest_path)
             if parent:
                 os.makedirs(parent, exist_ok=True)
@@ -466,9 +734,11 @@ class FileOperationWorker(QThread):
         dest_path, name = self._destPathForItem(source, dest_dir, relative_path)
 
         if os.path.exists(dest_path):
-            dest_path = self._askConflict(source, dest_path, name)
-            if dest_path is None:
-                raise UserAbortError()
+            resolved = self._askConflict(source, dest_path, name)
+            if resolved is _SKIP_ITEM:
+                self._finishItemProgress(source, name, item_index, total_items)
+                return
+            dest_path = resolved
             parent = os.path.dirname(dest_path)
             if parent:
                 os.makedirs(parent, exist_ok=True)
@@ -599,14 +869,13 @@ class FileOperationDialog(QDialog):
     # Purpose: Show conflict dialog and send user's choice to worker.
     # --------------------------------------------------------
     def _onConflictDetected(self, source_path, dest_path, file_name):
-        dest_dir = os.path.dirname(dest_path)
         op_name = "Copy" if self._operation == FileOperationWorker.OPERATION_COPY else "Move"
-        dialog = ConflictDialog(file_name, dest_dir, op_name, self)
+        dialog = ConflictDialog(source_path, dest_path, op_name, self)
         if dialog.exec_() != QDialog.Accepted:
             self._worker.setConflictResponse(CONFLICT_CANCEL, apply_to_all=False)
             return
         choice, apply_to_all = dialog.getChoice()
-        if not choice:
+        if not choice or choice == CONFLICT_CANCEL:
             self._worker.setConflictResponse(CONFLICT_CANCEL, apply_to_all=False)
             return
         new_dest = None

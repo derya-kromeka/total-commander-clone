@@ -1,6 +1,6 @@
 """
 Shared folder tree size / count helpers and a background worker.
-Used by Properties, selection details strip, and Compare dialog.
+Used by Properties and Compare dialog.
 """
 
 from __future__ import annotations

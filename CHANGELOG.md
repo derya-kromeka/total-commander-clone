@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.64] - 2026-08-10
+
+### Removed
+
+- Selection details strip above the file list (full path / Copy path / Compare / folder stats). Compare remains available from the context menu and SPECIAL menu.
+
+## [0.4.63] - 2026-08-10
+
+### Changed
+
+- **Copy/move conflict dialog**: Side-by-side Source vs Destination comparison with full paths, type, size, modified time, and async folder tree stats. New **Skip** leaves the existing item and continues the batch; **Cancel** still aborts the whole transfer. “Do this for all remaining conflicts” applies Overwrite / Keep both / Skip to later conflicts.
+
 ## [0.4.62] - 2026-08-10
 
 ### Added

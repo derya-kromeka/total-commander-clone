@@ -1720,45 +1720,6 @@ class FilePanel(QWidget):
         self._filter_banner.setVisible(False)
         layout.addWidget(self._filter_banner)
 
-        # --- Selection details strip (single selection context) ---
-        self._selection_details = QWidget()
-        self._selection_details.setObjectName("panelSelectionDetails")
-        details_layout = QVBoxLayout(self._selection_details)
-        details_layout.setContentsMargins(10, 6, 10, 6)
-        details_layout.setSpacing(4)
-        path_row = QHBoxLayout()
-        path_row.setSpacing(8)
-        self._selection_path_label = QLabel()
-        self._selection_path_label.setObjectName("panelSelectionDetailsPath")
-        self._selection_path_label.setWordWrap(True)
-        self._selection_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        path_row.addWidget(self._selection_path_label, 1)
-        self._btn_copy_selection_path = QPushButton("Copy path")
-        self._btn_copy_selection_path.setObjectName("selectionDetailsButton")
-        self._btn_copy_selection_path.setAutoDefault(False)
-        self._btn_copy_selection_path.setDefault(False)
-        self._btn_copy_selection_path.setToolTip("Copy the full path of the selected item.")
-        self._btn_copy_selection_path.clicked.connect(self._onCopySelectionPath)
-        path_row.addWidget(self._btn_copy_selection_path, 0, Qt.AlignTop)
-        self._btn_compare_selection = QPushButton("Compare\u2026")
-        self._btn_compare_selection.setObjectName("selectionDetailsButton")
-        self._btn_compare_selection.setAutoDefault(False)
-        self._btn_compare_selection.setDefault(False)
-        self._btn_compare_selection.setToolTip(
-            "Compare this item with the same relative path (or selection) on the other panel."
-        )
-        self._btn_compare_selection.clicked.connect(self.compareRequested.emit)
-        path_row.addWidget(self._btn_compare_selection, 0, Qt.AlignTop)
-        details_layout.addLayout(path_row)
-        self._selection_meta_label = QLabel()
-        self._selection_meta_label.setObjectName("panelSelectionDetailsMeta")
-        self._selection_meta_label.setWordWrap(True)
-        details_layout.addWidget(self._selection_meta_label)
-        self._selection_details.setVisible(False)
-        self._selection_stats_worker = None
-        self._selection_stats_path = ""
-        layout.addWidget(self._selection_details)
-
         # --- File table ---
         self._table = FileTableView(self)
         self._table.setObjectName("panelFileTable")
@@ -3386,103 +3347,7 @@ class FilePanel(QWidget):
         self.filesDropped.emit(file_paths, drop_target, is_copy)
 
     def _onSelectionChanged(self):
-        self._updateSelectionDetails()
         self.selectionChanged.emit()
-
-    # --------------------------------------------------------
-    # Method: _cancelSelectionStatsWorker
-    # --------------------------------------------------------
-    def _cancelSelectionStatsWorker(self):
-        thr = self._selection_stats_worker
-        self._selection_stats_worker = None
-        self._selection_stats_path = ""
-        if thr is None:
-            return
-        try:
-            thr.cancel()
-            thr.finishedOk.disconnect(self._onSelectionStatsReady)
-            thr.failed.disconnect(self._onSelectionStatsFailed)
-        except (TypeError, RuntimeError):
-            pass
-        thr.deleteLater()
-
-    # --------------------------------------------------------
-    # Method: _updateSelectionDetails
-    # Purpose: Show full path + size/counts for a single selection.
-    # --------------------------------------------------------
-    def _updateSelectionDetails(self):
-        entries = self.selectedEntries()
-        if len(entries) != 1:
-            self._cancelSelectionStatsWorker()
-            self._selection_details.setVisible(False)
-            return
-
-        entry = entries[0]
-        full = entry.get("full_path") or ""
-        name = entry.get("name") or ""
-        is_dir = bool(entry.get("is_dir"))
-        lines = [f"Full path: {full}"]
-        if self._source_model.isRecursive() and name and name != os.path.basename(full):
-            lines.append(f"Relative: {name}")
-        self._selection_path_label.setText("\n".join(lines))
-        self._selection_details.setVisible(True)
-
-        if not is_dir:
-            self._cancelSelectionStatsWorker()
-            sz = entry.get("size", -1)
-            from datetime import datetime
-
-            try:
-                mod = datetime.fromtimestamp(entry.get("mod_time") or 0).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-            except (OSError, ValueError, OverflowError):
-                mod = "—"
-            self._selection_meta_label.setText(
-                f"File · Size: {formatFileSize(sz) if sz >= 0 else '—'} · Modified: {mod}"
-            )
-            return
-
-        # Folder: async tree stats
-        if self._selection_stats_path == full and self._selection_stats_worker is not None:
-            return
-        self._cancelSelectionStatsWorker()
-        self._selection_meta_label.setText("Folder · Calculating size and file counts…")
-        self._selection_stats_path = full
-        from folder_stats import FolderSizeWorker
-
-        worker = FolderSizeWorker(full, self)
-        worker.finishedOk.connect(self._onSelectionStatsReady)
-        worker.failed.connect(self._onSelectionStatsFailed)
-        self._selection_stats_worker = worker
-        worker.start()
-
-    def _onSelectionStatsReady(self, total_bytes, file_count, dir_count):
-        worker = self.sender()
-        if worker is not self._selection_stats_worker:
-            return
-        self._selection_meta_label.setText(
-            f"Folder · {file_count:,} file(s), {dir_count:,} subfolder(s) · "
-            f"Total size: {formatFileSize(total_bytes)} ({total_bytes:,} bytes)"
-        )
-        self._selection_stats_worker = None
-
-    def _onSelectionStatsFailed(self, message):
-        worker = self.sender()
-        if worker is not self._selection_stats_worker:
-            return
-        self._selection_meta_label.setText(
-            f"Folder · Could not calculate size ({message or 'error'})"
-        )
-        self._selection_stats_worker = None
-
-    def _onCopySelectionPath(self):
-        entries = self.selectedEntries()
-        if len(entries) != 1:
-            return
-        path = entries[0].get("full_path") or ""
-        if path:
-            QApplication.clipboard().setText(path)
 
     def _updateNavButtons(self):
         self._btn_back.setEnabled(self._history_index > 0)
