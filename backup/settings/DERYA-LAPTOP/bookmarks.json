@@ -24,6 +24,11 @@
                     "kind": "folder"
                 }
             ]
+        },
+        {
+            "type": "bookmark",
+            "name": "PARA",
+            "path": "C:\\Users\\Derya\\PARA"
         }
     ]
 }
