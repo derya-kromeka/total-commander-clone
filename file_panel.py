@@ -390,7 +390,7 @@ class DrivePickerCombo(QComboBox):
 # ============================================================
 class FileSystemModel(QAbstractTableModel):
 
-    recursiveScanRequested = pyqtSignal(str, int)
+    recursiveScanRequested = pyqtSignal(str, int, str)
     recursiveScanAbortRequested = pyqtSignal()
 
     COLUMNS = ["Name", "Size", "Type", "Date Modified"]
@@ -410,6 +410,7 @@ class FileSystemModel(QAbstractTableModel):
         self._entries = []
         self._show_hidden = False
         self._recursive = False
+        self._scan_kind = "all"
         self._icon_provider = QFileIconProvider()
         self._scan_generation = 0
         self._date_modified_format_key = DEFAULT_DATE_MODIFIED_FORMAT
@@ -451,7 +452,12 @@ class FileSystemModel(QAbstractTableModel):
         try:
             from scan_cache import putScanCache
 
-            putScanCache(self._current_path, self._show_hidden, self._entries)
+            putScanCache(
+                self._current_path,
+                self._show_hidden,
+                self._entries,
+                kind=self._scan_kind,
+            )
         except Exception:
             pass
 
@@ -462,7 +468,10 @@ class FileSystemModel(QAbstractTableModel):
             from scan_cache import updateScanCacheFromEntries
 
             updateScanCacheFromEntries(
-                self._current_path, self._show_hidden, self._entries
+                self._current_path,
+                self._show_hidden,
+                self._entries,
+                kind=self._scan_kind,
             )
         except Exception:
             pass
@@ -515,6 +524,12 @@ class FileSystemModel(QAbstractTableModel):
         except OSError:
             return False
         is_dir = stat.S_ISDIR(st.st_mode)
+        # Kind-pruned recursive listings must not reintroduce mismatched rows.
+        if self._recursive:
+            if self._scan_kind == "dirs" and not is_dir:
+                return True
+            if self._scan_kind == "files" and is_dir:
+                return True
         size = -1 if is_dir else st.st_size
         mod_time = st.st_mtime
         if relative_path:
@@ -581,6 +596,23 @@ class FileSystemModel(QAbstractTableModel):
 
     def isRecursive(self):
         return self._recursive
+
+    # --------------------------------------------------------
+    # Method: setScanKind
+    # Purpose: "all" | "dirs" | "files" — prune recursive scan collect.
+    #          Reloads with force_rescan when recursive and a path is set.
+    # --------------------------------------------------------
+    def setScanKind(self, kind):
+        if kind not in ("all", "dirs", "files"):
+            return
+        if self._scan_kind == kind:
+            return
+        self._scan_kind = kind
+        if self._recursive and self._current_path:
+            self.loadDirectory(self._current_path, force_rescan=True)
+
+    def scanKind(self):
+        return self._scan_kind
 
     # --------------------------------------------------------
     # Method: setDateModifiedFormatKey
@@ -664,7 +696,7 @@ class FileSystemModel(QAbstractTableModel):
             try:
                 from scan_cache import getScanCache
 
-                cached = getScanCache(path, self._show_hidden)
+                cached = getScanCache(path, self._show_hidden, kind=self._scan_kind)
             except Exception:
                 cached = None
             if cached is not None:
@@ -681,7 +713,7 @@ class FileSystemModel(QAbstractTableModel):
         self.beginResetModel()
         self._entries = []
         self.endResetModel()
-        self.recursiveScanRequested.emit(path, gen)
+        self.recursiveScanRequested.emit(path, gen, self._scan_kind)
 
     def _loadDirectoryFlatSync(self, path):
         self.beginResetModel()
@@ -2331,7 +2363,9 @@ class FilePanel(QWidget):
                     from scan_cache import invalidateScanCache
 
                     invalidateScanCache(
-                        current, self._source_model.showHiddenFiles()
+                        current,
+                        self._source_model.showHiddenFiles(),
+                        kind=self._source_model.scanKind(),
                     )
                 except Exception:
                     pass
@@ -2763,6 +2797,10 @@ class FilePanel(QWidget):
         self._source_model.setRecursive(
             bool(data.get("filter_include_subfolders", False))
         )
+        fk = data.get("filter_kind")
+        if fk in ("all", "dirs", "files"):
+            self._proxy_model.setEntryKindFilter(fk)
+            self._source_model.setScanKind(fk)
 
         current = data.get("current_path", "")
         if current and os.path.isdir(current):
@@ -2786,9 +2824,6 @@ class FilePanel(QWidget):
         fm = data.get("filter_mode")
         if fm in ("contains", "wildcard", "regex"):
             self._proxy_model.setFilterMode(fm)
-        fk = data.get("filter_kind")
-        if fk in ("all", "dirs", "files"):
-            self._proxy_model.setEntryKindFilter(fk)
         self._filter_edit.blockSignals(True)
         self._filter_edit.setText(data.get("filter_text") or "")
         self._filter_edit.blockSignals(False)
@@ -3136,6 +3171,7 @@ class FilePanel(QWidget):
         fk = data.get("filter_kind")
         if fk in ("all", "dirs", "files"):
             self._proxy_model.setEntryKindFilter(fk)
+            self._source_model.setScanKind(fk)
         self._proxy_model.setFilterSpec(
             FilterSpec.from_dict(data.get("filter_advanced"))
         )
@@ -3409,7 +3445,7 @@ class FilePanel(QWidget):
         thr.deleteLater()
         self._scan_thread = None
 
-    def _onRecursiveScanRequested(self, path, gen):
+    def _onRecursiveScanRequested(self, path, gen, kind="all"):
         quiet = self._source_model.quietScanPending()
         self._cancelRecursiveScanThread()
         if not quiet:
@@ -3426,6 +3462,7 @@ class FilePanel(QWidget):
             gen,
             path,
             self._source_model.showHiddenFiles(),
+            kind,
             self,
         )
         self._scan_thread.progress.connect(self._onRecursiveScanProgress)

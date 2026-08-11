@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.66] - 2026-08-11
+
+### Changed
+
+- **Faster Subfolders search**: **Folders only** / **Files only** now prune the recursive scan itself (files are not collected when searching folders only), instead of only hiding them in the view afterward. The walker uses `os.scandir` so Windows avoids extra `stat` round trips per entry — much faster on network/shared drives.
+
 ## [0.4.65] - 2026-08-10
 
 ### Changed
