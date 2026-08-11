@@ -29,6 +29,11 @@
             "type": "bookmark",
             "name": "PARA",
             "path": "C:\\Users\\Derya\\PARA"
+        },
+        {
+            "type": "bookmark",
+            "name": "Workshop",
+            "path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop"
         }
     ],
     "libraries": [],
@@ -104,7 +109,9 @@
             "C:\\Users\\Derya\\Downloads",
             "C:\\Users\\Derya\\Downloads",
             "C:\\Users\\Derya",
-            "C:\\Users\\Derya\\PARA"
+            "C:\\Users\\Derya\\PARA",
+            "C:\\Users\\Derya\\PARA\\02_Areas",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop"
         ],
         "column_visibility": {
             "name": true,
