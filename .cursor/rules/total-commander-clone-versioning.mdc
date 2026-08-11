@@ -1,0 +1,29 @@
+---
+description: Version and changelog discipline for Total Commander Clone (PyQt file manager).
+alwaysApply: true
+---
+
+# Versioning and changelog
+
+This project keeps a **single source of truth** for the app version:
+
+- `app_version.py` — `APP_VERSION` (and `APP_NAME`). The main window title and About dialog read from here via `getWindowTitle()`; `main.py` sets `QApplication.setApplicationVersion(APP_VERSION)`.
+
+## When to update
+
+On **every user-visible change set** that is merged or released:
+
+1. **Bump `APP_VERSION`** in `app_version.py` following [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATCH).
+2. **Update `CHANGELOG.md`**:
+   - Add items under `[Unreleased]` while developing, or
+   - When cutting a release, add a new section `## [x.y.z] - YYYY-MM-DD`, move relevant bullets from Unreleased, and clear `[Unreleased]` or leave a short placeholder.
+3. Ensure the **window title** and **Help → About** still reflect the version (they use `app_version.py` — do not hard-code version strings elsewhere).
+
+## Do not
+
+- Hard-code version numbers in UI strings except by importing from `app_version.py`.
+- Skip `CHANGELOG.md` for features or fixes users would notice.
+
+## Optional
+
+- PyInstaller builds may reference the same version; if you add a spec or CI step, read `APP_VERSION` from `app_version.py` or keep it in sync manually when releasing.

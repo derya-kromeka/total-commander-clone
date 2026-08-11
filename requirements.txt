@@ -1,0 +1,5 @@
+PyQt5>=5.15.0
+send2trash>=1.8.0
+
+# Build-time only (for scripts/build.bat)
+pyinstaller>=6.0.0

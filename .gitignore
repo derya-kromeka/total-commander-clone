@@ -1,0 +1,26 @@
+# PyInstaller / packaging output (regenerated locally)
+build/
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+# Virtual environment (scripts/install.sh uses .venv at repo root)
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# App local config at repo root (dev). Per-PC backups under backup/settings/ ARE tracked.
+/state.json
+/settings.json
+.git-account.json
+.git-account.pat
