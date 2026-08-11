@@ -1,0 +1,28 @@
+{
+    "show_hidden_files": false,
+    "confirm_delete": true,
+    "theme_mode": "dark",
+    "default_left_path": "",
+    "default_right_path": "",
+    "column_widths": {
+        "name": 300,
+        "size": 100,
+        "type": 120
+    },
+    "window_geometry": {
+        "x": 1,
+        "y": 23,
+        "width": 800,
+        "height": 741
+    },
+    "sort_column": 0,
+    "sort_order": "ascending",
+    "font_size": 8,
+    "ui_scale": 100,
+    "subfolders_warning_dismissed": false,
+    "mirror_mode": "to_other",
+    "date_modified_format": "yyyy_mm_dd_hm",
+    "check_for_updates_on_startup": true,
+    "skip_update_version": "",
+    "cache_recursive_scans": true
+}

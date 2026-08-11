@@ -1,0 +1,23 @@
+{
+    "bookmarks": [
+        {
+            "type": "group",
+            "name": "Kromeka",
+            "expanded": true,
+            "children": [
+                {
+                    "type": "bookmark",
+                    "name": "(KROMEKA)",
+                    "path": "G:\\Shared drives",
+                    "kind": "folder"
+                },
+                {
+                    "type": "bookmark",
+                    "name": "10 - SATIŞ",
+                    "path": "G:\\Shared drives\\10 - SATIŞ",
+                    "kind": "folder"
+                }
+            ]
+        }
+    ]
+}
