@@ -256,6 +256,7 @@ class SettingsManager:
 
     def setBookmarksStructure(self, structure):
         self._state["bookmarks"] = structure
+        self.saveState()
 
     def addBookmark(self, name, path):
         structure = self.getBookmarksStructure()
@@ -263,6 +264,7 @@ class SettingsManager:
             return
         structure.append({"type": "bookmark", "name": name, "path": path})
         self._state["bookmarks"] = structure
+        self.saveState()
 
     def _findBookmarkByPath(self, structure, path):
         for node in structure:
@@ -288,6 +290,7 @@ class SettingsManager:
         structure = self.getBookmarksStructure()
         self._removeBookmarkFromList(structure, path)
         self._state["bookmarks"] = structure
+        self.saveState()
 
     def getBookmarks(self):
         out = []

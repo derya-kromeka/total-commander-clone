@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.67] - 2026-08-11
+
+### Fixed
+
+- **Bookmarks persistence**: Adding, editing, reordering, or deleting bookmarks writes `state.json` immediately, so bookmarks survive killed processes and rebuilds (not only a clean window close).
+
 ## [0.4.66] - 2026-08-11
 
 ### Changed
