@@ -19,7 +19,7 @@
     "sort_order": "ascending",
     "font_size": 8,
     "ui_scale": 100,
-    "subfolders_warning_dismissed": false,
+    "subfolders_warning_dismissed": true,
     "mirror_mode": "to_other",
     "date_modified_format": "yyyy_mm_dd_hm",
     "check_for_updates_on_startup": true,
