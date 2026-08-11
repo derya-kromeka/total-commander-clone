@@ -1,23 +1,29 @@
 {
     "bookmarks": [
         {
-            "type": "group",
-            "name": "Kromeka",
-            "expanded": true,
+            "kind": "folder",
+            "name": "Downloads",
+            "path": "C:\\Users\\Derya\\Downloads",
+            "type": "bookmark"
+        },
+        {
             "children": [
                 {
-                    "type": "bookmark",
+                    "kind": "folder",
                     "name": "(KROMEKA)",
                     "path": "G:\\Shared drives",
-                    "kind": "folder"
+                    "type": "bookmark"
                 },
                 {
-                    "type": "bookmark",
+                    "kind": "folder",
                     "name": "10 - SATIŞ",
                     "path": "G:\\Shared drives\\10 - SATIŞ",
-                    "kind": "folder"
+                    "type": "bookmark"
                 }
-            ]
+            ],
+            "expanded": true,
+            "name": "Kromeka",
+            "type": "group"
         }
     ]
 }

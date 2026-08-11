@@ -1,23 +1,29 @@
 {
     "bookmarks": [
         {
-            "type": "group",
-            "name": "Kromeka",
-            "expanded": true,
+            "kind": "folder",
+            "name": "Downloads",
+            "path": "C:\\Users\\Derya\\Downloads",
+            "type": "bookmark"
+        },
+        {
             "children": [
                 {
-                    "type": "bookmark",
+                    "kind": "folder",
                     "name": "(KROMEKA)",
                     "path": "G:\\Shared drives",
-                    "kind": "folder"
+                    "type": "bookmark"
                 },
                 {
-                    "type": "bookmark",
+                    "kind": "folder",
                     "name": "10 - SATIŞ",
                     "path": "G:\\Shared drives\\10 - SATIŞ",
-                    "kind": "folder"
+                    "type": "bookmark"
                 }
-            ]
+            ],
+            "expanded": true,
+            "name": "Kromeka",
+            "type": "group"
         }
     ],
     "libraries": [],
@@ -83,7 +89,14 @@
             "G:\\Shared drives\\10 - SATIŞ",
             "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia",
             "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia\\Al Marai",
-            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia\\Al Marai\\KT-1952-Third In-Motion W_L Line"
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia\\Al Marai\\KT-1952-Third In-Motion W_L Line",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\PARA",
+            "C:\\Users\\Derya\\PARA\\02_Areas",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\candling-on-rust-main",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\Downloads"
         ],
         "column_visibility": {
             "name": true,
