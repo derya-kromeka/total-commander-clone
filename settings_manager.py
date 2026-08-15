@@ -12,13 +12,14 @@ from datetime import datetime, timezone
 
 from config_backup import backupConfigAndUpload
 from app_version import APP_VERSION
+from library_catalog import CATALOG_FILENAME, LibraryCatalog
 
 
 # ------------------------------------------------------------
 # Profile bundle (single-file import/export)
 # ------------------------------------------------------------
 PROFILE_FORMAT = "total-commander-clone-profile"
-PROFILE_FORMAT_VERSION = 1
+PROFILE_FORMAT_VERSION = 2
 PROFILE_STATE_KEYS = (
     "bookmarks",
     "libraries",
@@ -157,6 +158,9 @@ class SettingsManager:
 
         self._settings = self._loadOrCreate(self._settings_path, DEFAULT_SETTINGS)
         self._state = self._loadOrCreate(self._state_path, DEFAULT_STATE)
+        self._catalog = LibraryCatalog(os.path.join(base_path, CATALOG_FILENAME))
+        self._catalog.open()
+        self._migrateLegacyLibraries()
 
     # --------------------------------------------------------
     # Method: _loadOrCreate
@@ -207,6 +211,29 @@ class SettingsManager:
                 json.dump(data, f, indent=4, ensure_ascii=False)
         except IOError as e:
             print(f"[SettingsManager] Error writing {path}: {e}")
+
+    def configDir(self):
+        return self._base_path
+
+    def libraryCatalog(self):
+        return self._catalog
+
+    def _migrateLegacyLibraries(self):
+        libraries = self._state.get("libraries") or []
+        folder_tags = self._state.get("folder_tags") or {}
+        if self._catalog.libraryCount() > 0:
+            if libraries or folder_tags:
+                self._state["libraries"] = []
+                self._state["folder_tags"] = {}
+                self.saveState()
+            return
+        if not libraries and not folder_tags:
+            return
+        self._catalog.importLegacyState(libraries, folder_tags)
+        if self._catalog.libraryCount() >= len(libraries) or not libraries:
+            self._state["libraries"] = []
+            self._state["folder_tags"] = {}
+            self.saveState()
 
     # --------------------------------------------------------
     # Settings Accessors
@@ -393,6 +420,7 @@ class SettingsManager:
             "app_version": APP_VERSION,
             "settings": settings,
             "state": state,
+            "library_catalog": self._catalog.exportLogicalSnapshot() if self._catalog else {},
         }
 
     # --------------------------------------------------------
@@ -422,6 +450,10 @@ class SettingsManager:
 
         # Accept loose layouts: top-level settings-like keys, or our backup split files merged by user.
         if settings is None and state is None:
+            if data.get("format") == "total-commander-clone-library-catalog" or "metadata_items" in data:
+                self._catalog.importLogicalSnapshot(data, replace=True)
+                self.saveAll()
+                return {"settings_count": 0, "state_keys": ["library_catalog"]}
             if any(k in data for k in ("theme_mode", "font_size", "show_hidden_files")):
                 settings = {
                     k: v
@@ -459,6 +491,18 @@ class SettingsManager:
                     self._state[key] = value
                 applied_state_keys.append(key)
 
+        snapshot = data.get("library_catalog")
+        if isinstance(snapshot, dict) and snapshot.get("libraries") is not None:
+            self._catalog.importLogicalSnapshot(snapshot, replace=True)
+        elif isinstance(state, dict) and (state.get("libraries") or state.get("folder_tags")):
+            if self._catalog.libraryCount() == 0:
+                self._catalog.importLegacyState(
+                    state.get("libraries") or [],
+                    state.get("folder_tags") or {},
+                )
+            self._state["libraries"] = []
+            self._state["folder_tags"] = {}
+
         self.saveAll()
         return {
             "settings_count": applied_settings,
@@ -479,6 +523,7 @@ class SettingsManager:
                 self._state,
                 project_root=self._project_root,
                 upload=True,
+                library_snapshot=self._catalog.exportLogicalSnapshot() if self._catalog else None,
             )
         except Exception as e:
             print(f"[SettingsManager] Config backup failed: {e}")

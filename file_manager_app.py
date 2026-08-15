@@ -27,8 +27,16 @@ from batch_rename_dialog import BatchRenameDialog
 from bookmarks_panel import BookmarksPanel
 from libraries_panel import LibrariesPanel
 from library_browser_panel import LibraryBrowserPanel
-from library_dialogs import LibraryRootDialog, TagAssignmentDialog
+from library_dialogs import (
+    FieldDefinitionDialog,
+    LibraryRootDialog,
+    PropertyAssignmentDialog,
+    TagAssignmentDialog,
+)
+from library_index_worker import LibraryIndexQueue
+from library_management_dialog import LibraryManagementDialog
 from library_manager import LibraryManager
+from library_catalog import APPLY_ALL, FIELD_NOTES, FIELD_TAGS
 from settings_manager import SettingsManager
 from windows_shell_clipboard import setFileClipboard, getClipboardDropEffect
 from app_version import APP_VERSION, APP_NAME, getWindowTitle
@@ -47,8 +55,9 @@ from app_updater import (
     getPublishPreview,
     launchUpdateAndRebuild,
     publishLocalVersionToGitHub,
+    resolveUpdateRepoRoot,
 )
-from config_backup import _loadSavedGitAuth
+from config_backup import loadSavedGitAuth
 from git_credentials_dialog import GitCredentialsDialog
 
 
@@ -170,6 +179,10 @@ class FileManagerApp(QMainWindow):
         super().__init__(parent)
         self._settings = settings_manager
         self._library_manager = LibraryManager(settings_manager)
+        self._library_index_queue = LibraryIndexQueue(self._library_manager.dbPath(), self)
+        self._library_index_queue.progress.connect(self._onLibraryIndexProgress)
+        self._library_index_queue.rootFinished.connect(self._onLibraryIndexFinished)
+        self._library_index_queue.rootFailed.connect(self._onLibraryIndexFailed)
         self._active_panel = None
         self._clipboard_paths = []
         self._clipboard_mode = None
@@ -500,19 +513,26 @@ class FileManagerApp(QMainWindow):
         self._action_add_library_root.triggered.connect(self._onAddCurrentFolderToLibrary)
         libraries_menu.addAction(self._action_add_library_root)
 
-        self._action_assign_current_folder_tags = QAction("Assign Tags To Current Folder...", self)
+        self._action_assign_current_folder_tags = QAction("Assign Properties...", self)
         self._action_assign_current_folder_tags.setToolTip(
-            "Assign tags to current folder\n\n"
-            "Edit tags for the folder shown in the active panel."
+            "Assign properties\n\n"
+            "Edit tags and custom fields for the selected files or folders."
         )
         self._action_assign_current_folder_tags.triggered.connect(self._onAssignCurrentFolderTags)
         libraries_menu.addAction(self._action_assign_current_folder_tags)
 
+        self._action_manage_libraries = QAction("Library Manager...", self)
+        self._action_manage_libraries.setToolTip(
+            "Library manager\n\nCreate libraries, locate moved roots, and rebuild indexes."
+        )
+        self._action_manage_libraries.triggered.connect(self._onManageLibraries)
+        libraries_menu.addAction(self._action_manage_libraries)
+
         libraries_menu.addSeparator()
 
-        self._action_scan_libraries = QAction("Scan Library Roots", self)
+        self._action_scan_libraries = QAction("Check Library Indexes", self)
         self._action_scan_libraries.setToolTip(
-            "Scan library roots\n\nRescan indexed folders under each library root."
+            "Check library indexes\n\nIncrementally update online roots."
         )
         self._action_scan_libraries.triggered.connect(self._onScanLibraries)
         libraries_menu.addAction(self._action_scan_libraries)
@@ -538,6 +558,14 @@ class FileManagerApp(QMainWindow):
         )
         self._action_publish_version.triggered.connect(self._onPublishVersionToGitHub)
         help_menu.addAction(self._action_publish_version)
+        self._action_git_settings = QAction("Git settings...", self)
+        self._action_git_settings.setToolTip(
+            "Git settings\n\n"
+            "Set the remote URL, GitHub username, and Personal Access Token (PAT). "
+            "Public remotes can pull without a PAT; pushing usually needs one."
+        )
+        self._action_git_settings.triggered.connect(self._onGitSettings)
+        help_menu.addAction(self._action_git_settings)
         help_menu.addSeparator()
         self._action_about = QAction("About", self)
         self._action_about.setToolTip(
@@ -834,8 +862,10 @@ class FileManagerApp(QMainWindow):
         self._left_panel = FilePanel("left", self, settings_manager=self._settings)
         self._right_panel = FilePanel("right", self, settings_manager=self._settings)
 
-        self._left_library_browser = LibraryBrowserPanel("left", self)
-        self._right_library_browser = LibraryBrowserPanel("right", self)
+        self._left_library_browser = LibraryBrowserPanel("left", self._library_manager, self)
+        self._right_library_browser = LibraryBrowserPanel("right", self._library_manager, self)
+        self._left_library_browser.setLibraryManager(self._library_manager)
+        self._right_library_browser.setLibraryManager(self._library_manager)
         self._connectLibraryBrowser(self._left_library_browser, "left")
         self._connectLibraryBrowser(self._right_library_browser, "right")
 
@@ -866,6 +896,11 @@ class FileManagerApp(QMainWindow):
         self._libraries_panel.navigateRequested.connect(self._onLibraryNavigateRequested)
         self._libraries_panel.addLibraryRequested.connect(self._onAddCurrentFolderToLibrary)
         self._libraries_panel.scanLibrariesRequested.connect(self._onScanLibraries)
+        self._libraries_panel.manageLibrariesRequested.connect(self._onManageLibraries)
+        self._libraries_panel.locateRootRequested.connect(self._onLocateLibraryRoot)
+        self._libraries_panel.checkRootRequested.connect(
+            lambda root_id: self._enqueueLibraryIndex(root_id, "incremental")
+        )
 
         self._sidebar_tabs = QTabWidget(self)
         self._sidebar_tabs.setObjectName("sidebarTabs")
@@ -926,6 +961,8 @@ class FileManagerApp(QMainWindow):
 
         self._left_panel.folderCreated.connect(self._onFolderCreatedFromPanel)
         self._right_panel.folderCreated.connect(self._onFolderCreatedFromPanel)
+        self._left_panel.itemRenamed.connect(self._onItemRenamedInPanel)
+        self._right_panel.itemRenamed.connect(self._onItemRenamedInPanel)
 
         self._left_panel.selectionChanged.connect(self._updateStatusBar)
         self._right_panel.selectionChanged.connect(self._updateStatusBar)
@@ -1164,6 +1201,7 @@ class FileManagerApp(QMainWindow):
             result = panel.applyTransferResult(task)
             if result == "fallback":
                 panel.refresh(force_rescan=True)
+        self._notifyCatalogOfTransfer(task)
         self._showStatus(message)
 
     def _onTransferQueueIdle(self):
@@ -1351,8 +1389,14 @@ class FileManagerApp(QMainWindow):
     #          so drive scans never block the first paint.
     # --------------------------------------------------------
     def _deferredLibraryRefresh(self):
-        self._library_manager.refreshLibraries()
+        result = self._library_manager.refreshLibraries()
         self._reloadLibrariesPanel()
+        needed = result.get("verification_needed") or []
+        if needed:
+            self._promptRootVerification(needed)
+        for root in self._library_manager.onlineRootsForQuietCheck():
+            if root.get("id") not in {item.get("id") for item in needed}:
+                self._enqueueLibraryIndex(root["id"], "incremental")
 
     # --------------------------------------------------------
     # Active Panel Management
@@ -1597,6 +1641,12 @@ class FileManagerApp(QMainWindow):
 
     def _onFolderCreatedFromPanel(self, folder_name):
         self._showStatus(f"Created folder: {folder_name}")
+        if self._active_panel:
+            path = os.path.join(self._active_panel.currentPath() or "", folder_name)
+            self._library_manager.notifyPathCopied(path)
+
+    def _onItemRenamedInPanel(self, old_path, new_path):
+        self._library_manager.notifyPathRenamed(old_path, new_path)
 
     def _onNewFolder(self):
         if not self._active_panel:
@@ -2008,22 +2058,134 @@ class FileManagerApp(QMainWindow):
         if not selected_library_id and hasattr(self, "_libraries_panel"):
             selected_library_id = self._libraries_panel.selectedLibraryId()
         libraries = self._library_manager.getLibraries()
-        tagged_folders = self._library_manager.getTaggedFolders()
-        self._libraries_panel.setData(libraries, tagged_folders, selected_library_id)
+        self._libraries_panel.setData(libraries, None, selected_library_id)
 
         if hasattr(self, "_left_library_browser"):
             self._left_library_browser.setData(
-                libraries, tagged_folders, self._left_library_browser.selectedLibraryId()
+                libraries, None, self._left_library_browser.selectedLibraryId()
             )
         if hasattr(self, "_right_library_browser"):
             self._right_library_browser.setData(
-                libraries, tagged_folders, self._right_library_browser.selectedLibraryId()
+                libraries, None, self._right_library_browser.selectedLibraryId()
             )
 
-    def _onScanLibraries(self):
-        self._library_manager.refreshLibraries()
+    def _enqueueLibraryIndex(self, root_id, mode="incremental"):
+        if not root_id:
+            return
+        self._library_index_queue.enqueue(root_id, mode)
+
+    def _onLibraryIndexProgress(self, root_id, count, current_dir):
+        short = current_dir
+        if len(short) > 60:
+            short = "…" + short[-57:]
+        self._showStatus(f"Indexing {count} items… {short}", timeout=2000)
+
+    def _onLibraryIndexFinished(self, root_id, summary):
+        added = summary.get("added_count", 0)
+        changed = summary.get("changed_count", 0)
+        missing = summary.get("missing_count", 0)
         self._reloadLibrariesPanel()
-        self._showStatus("Library roots scanned.")
+        self._showStatus(
+            f"Index updated: +{added} changed {changed} missing {missing}."
+        )
+
+    def _onLibraryIndexFailed(self, root_id, message):
+        self._reloadLibrariesPanel()
+        self._showStatus(message or "Library indexing failed.")
+
+    def _promptRootVerification(self, roots):
+        names = ", ".join(root.get("name") or root.get("path") or "root" for root in roots[:5])
+        extra = "" if len(roots) <= 5 else f" and {len(roots) - 5} more"
+        box = QMessageBox(self)
+        box.setWindowTitle("Library root moved")
+        box.setText(
+            f"These library roots were found at a new location:\n{names}{extra}\n\n"
+            "Check for differences, rebuild the index, or do this later."
+        )
+        check_btn = box.addButton("Check changes", QMessageBox.AcceptRole)
+        rebuild_btn = box.addButton("Rebuild index", QMessageBox.ActionRole)
+        box.addButton("Later", QMessageBox.RejectRole)
+        box.exec_()
+        clicked = box.clickedButton()
+        mode = "incremental" if clicked == check_btn else "rebuild" if clicked == rebuild_btn else ""
+        if not mode:
+            return
+        for root in roots:
+            self._enqueueLibraryIndex(root.get("id"), mode)
+
+    def _onScanLibraries(self):
+        result = self._library_manager.refreshLibraries()
+        self._reloadLibrariesPanel()
+        needed = result.get("verification_needed") or []
+        if needed:
+            self._promptRootVerification(needed)
+            return
+        for root in self._library_manager.onlineRootsForQuietCheck():
+            self._enqueueLibraryIndex(root["id"], "incremental")
+        self._showStatus("Checking online library roots…")
+
+    def _onManageLibraries(self):
+        dialog = LibraryManagementDialog(self._library_manager, self)
+        dialog.checkRequested.connect(
+            lambda root_id: self._enqueueLibraryIndex(root_id, "incremental")
+        )
+        dialog.rebuildRequested.connect(
+            lambda root_id: self._enqueueLibraryIndex(root_id, "rebuild")
+        )
+        dialog.locateRequested.connect(
+            lambda root_id, dlg=dialog: (self._onLocateLibraryRoot(root_id), dlg.reload())
+        )
+        dialog.addRootRequested.connect(
+            lambda library_id, dlg=dialog: (self._onAddRootToLibraryId(library_id), dlg.reload())
+        )
+        dialog.exec_()
+        self._reloadLibrariesPanel()
+
+    def _onAddRootToLibraryId(self, library_id):
+        library = self._library_manager.getLibrary(library_id)
+        name = (library or {}).get("name", "")
+        folder_path = self._activeFolderCandidate()
+        result = self._promptLibraryRegistration(folder_path, initial_library_name=name)
+        if result is None:
+            return
+        self._reloadLibrariesPanel(result["library"]["id"])
+        self._enqueueLibraryIndex(result["root"]["id"], "incremental")
+
+    def _onLocateLibraryRoot(self, root_id):
+        if not root_id:
+            return
+        start = self._activeFolderCandidate() or os.path.expanduser("~")
+        chosen = QFileDialog.getExistingDirectory(self, "Locate library root", start)
+        if not chosen:
+            return
+        result = self._library_manager.rebindRoot(root_id, chosen, claim=False)
+        if result.get("needs_claim"):
+            answer = QMessageBox.question(
+                self,
+                "Claim this folder?",
+                "This folder has no library marker. Use it as this library root and write a marker?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return
+            result = self._library_manager.rebindRoot(root_id, chosen, claim=True)
+        if not result.get("ok"):
+            QMessageBox.warning(self, "Locate root", result.get("error") or "Could not bind that folder.")
+            return
+        self._reloadLibrariesPanel()
+        box = QMessageBox(self)
+        box.setWindowTitle("Root located")
+        box.setText("The library root is now available. Check for changes or rebuild the index?")
+        check_btn = box.addButton("Check changes", QMessageBox.AcceptRole)
+        rebuild_btn = box.addButton("Rebuild index", QMessageBox.ActionRole)
+        box.addButton("Later", QMessageBox.RejectRole)
+        box.exec_()
+        clicked = box.clickedButton()
+        if clicked == check_btn:
+            self._enqueueLibraryIndex(root_id, "incremental")
+        elif clicked == rebuild_btn:
+            self._enqueueLibraryIndex(root_id, "rebuild")
 
     def _onLibraryNavigateRequested(self, path):
         if not path or not os.path.isdir(path):
@@ -2085,6 +2247,7 @@ class FileManagerApp(QMainWindow):
         if result is None:
             return None
         self._reloadLibrariesPanel(result["library"]["id"])
+        self._enqueueLibraryIndex(result["root"]["id"], "incremental")
         self._showStatus(
             f"Added root to library: {result['library'].get('name', 'Library')} -> {result['root'].get('path', '')}"
         )
@@ -2113,37 +2276,83 @@ class FileManagerApp(QMainWindow):
         return self._library_manager.resolveFolderContext(folder_path)
 
     def _onAssignCurrentFolderTags(self):
-        folder_path = self._activeFolderCandidate()
-        if not folder_path:
-            QMessageBox.information(self, "Tags", "Select a folder or open one in the active panel first.")
+        paths = []
+        if self._active_panel:
+            paths = self._active_panel.selectedPaths()
+            if not paths:
+                current = self._active_panel.currentPath()
+                if current:
+                    paths = [current]
+        if not paths:
+            items = []
+            if hasattr(self, "_left_library_browser"):
+                if self._left_stack.currentWidget() == self._left_library_browser:
+                    items = self._left_library_browser.selectedItems()
+                elif self._right_stack.currentWidget() == self._right_library_browser:
+                    items = self._right_library_browser.selectedItems()
+            paths = [item.get("resolved_path") for item in items if item.get("resolved_path")]
+        if not paths:
+            QMessageBox.information(self, "Properties", "Select files or a folder first.")
             return
-        self._onAssignFolderTags(folder_path)
+        self._onAssignProperties(paths)
 
     def _onAssignFolderTags(self, folder_path):
-        if not folder_path or not os.path.isdir(folder_path):
-            QMessageBox.warning(self, "Tags", "Choose a valid folder first.")
-            return
+        self._onAssignProperties([folder_path])
 
-        context = self._ensureLibraryContext(folder_path)
+    def _onAssignProperties(self, paths):
+        paths = [path for path in paths if path]
+        if not paths:
+            return
+        context = self._ensureLibraryContext(paths[0] if os.path.isdir(paths[0]) else os.path.dirname(paths[0]))
         if context is None:
             return
 
-        record = self._library_manager.getFolderRecordForPath(folder_path) or {}
-        known_tags = self._library_manager.getAvailableTags()
-        dialog = TagAssignmentDialog(
-            folder_path,
-            existing_tags=record.get("tags", []),
-            existing_note=record.get("note", ""),
-            known_tags=known_tags,
+        record = self._library_manager.getItemRecordForPath(paths[0]) or {}
+        current_values = record.get("values") or {}
+        if record.get("tags") and FIELD_TAGS not in current_values:
+            current_values[FIELD_TAGS] = record.get("tags")
+        if record.get("note") and FIELD_NOTES not in current_values:
+            current_values[FIELD_NOTES] = [record.get("note")]
+
+        dialog = PropertyAssignmentDialog(
+            paths,
+            self._library_manager.listFields(),
+            current_values=current_values,
+            known_tags=self._library_manager.getAvailableTags(),
+            allow_scope=len(paths) == 1 and os.path.isdir(paths[0]),
             parent=self,
         )
         if dialog.exec_() != QDialog.Accepted:
             return
-
         values = dialog.values()
-        self._library_manager.assignTagsToFolder(folder_path, values.get("tags", []), values.get("note", ""))
+        if values.get("manage_fields"):
+            self._onManageFields()
+            self._onAssignProperties(paths)
+            return
+        self._library_manager.assignProperties(
+            paths,
+            values.get("values") or {},
+            scope=values.get("scope") or "selected",
+            inherit=bool(values.get("inherit")),
+            inherit_apply_to=APPLY_ALL,
+        )
         self._reloadLibrariesPanel(context["library"]["id"])
-        self._showStatus(f"Tags updated for: {folder_path}")
+        self._showStatus(f"Properties updated for {len(paths)} item(s).")
+
+    def _onManageFields(self):
+        dialog = FieldDefinitionDialog(self)
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        values = dialog.values()
+        if not values.get("name"):
+            return
+        created = self._library_manager.createField(
+            values.get("name"),
+            values.get("type"),
+            options=values.get("options"),
+        )
+        if created is None:
+            QMessageBox.warning(self, "Properties", "Could not create that field.")
 
     # --------------------------------------------------------
     # Library Browser Panel (full panel view)
@@ -2159,6 +2368,10 @@ class FileManagerApp(QMainWindow):
         browser.addLibraryRequested.connect(self._onAddCurrentFolderToLibrary)
         browser.scanLibrariesRequested.connect(self._onScanLibraries)
         browser.assignTagsRequested.connect(self._onAssignCurrentFolderTags)
+        if hasattr(browser, "manageLibrariesRequested"):
+            browser.manageLibrariesRequested.connect(self._onManageLibraries)
+        if hasattr(browser, "locateRootRequested"):
+            browser.locateRootRequested.connect(self._onLocateLibraryRoot)
         if hasattr(browser, "activated"):
             panel = self._left_panel if side == "left" else self._right_panel
             browser.activated.connect(lambda p=panel: self._setActivePanel(p))
@@ -2207,9 +2420,8 @@ class FileManagerApp(QMainWindow):
     def _reloadLibraryBrowser(self, side):
         browser = self._left_library_browser if side == "left" else self._right_library_browser
         libraries = self._library_manager.getLibraries()
-        tagged_folders = self._library_manager.getTaggedFolders()
         selected_id = browser.selectedLibraryId()
-        browser.setData(libraries, tagged_folders, selected_id)
+        browser.setData(libraries, None, selected_id)
 
     # --------------------------------------------------------
     # Mirror: Sync folder between panels (direction from Settings)
@@ -2446,12 +2658,13 @@ class FileManagerApp(QMainWindow):
                 lambda: self._onAddFolderToLibrary(entries[0]["full_path"])
             )
 
-            assign_tags_action = menu.addAction("Assign Tags...")
+        if has_selection:
+            assign_tags_action = menu.addAction("Assign Properties...")
             assign_tags_action.setToolTip(
-                "Assign tags\n\nEdit tags for this folder in the library system."
+                "Assign properties\n\nEdit tags and custom fields for the selected items."
             )
             assign_tags_action.triggered.connect(
-                lambda: self._onAssignFolderTags(entries[0]["full_path"])
+                lambda: self._onAssignProperties([entry["full_path"] for entry in entries])
             )
 
         bookmark_action = menu.addAction("Bookmark This Folder")
@@ -2662,8 +2875,28 @@ class FileManagerApp(QMainWindow):
             self._showStatus(f"Move queued ({len(file_paths)} item(s)).")
 
     # --------------------------------------------------------
-    # About Dialog
+    # Git settings / About
     # --------------------------------------------------------
+    def _onGitSettings(self):
+        repo_root = resolveUpdateRepoRoot(
+            getattr(self._settings, "_project_root", None)
+        )
+        if not repo_root:
+            QMessageBox.warning(
+                self,
+                "Git settings",
+                "Could not find the project folder (needs main.py and scripts/).",
+            )
+            return
+        dlg = GitCredentialsDialog(
+            repo_root,
+            parent=self,
+            settings_mode=True,
+            require_pat=False,
+        )
+        if dlg.exec_() == QDialog.Accepted:
+            self._showStatus("Git settings saved.")
+
     def _onAbout(self):
         QMessageBox.about(
             self,
@@ -2847,11 +3080,12 @@ class FileManagerApp(QMainWindow):
             return
 
         self._publish_pending_result = result
-        auth = _loadSavedGitAuth(repo_root)
+        auth = loadSavedGitAuth(repo_root)
         if not auth or not auth.get("pat"):
             dlg = GitCredentialsDialog(
                 repo_root,
                 parent=self,
+                require_pat=True,
                 message=(
                     "No saved GitHub credentials were found. "
                     "Enter a username and Personal Access Token (PAT) to push."
@@ -2890,6 +3124,7 @@ class FileManagerApp(QMainWindow):
             dlg = GitCredentialsDialog(
                 repo_root,
                 parent=self,
+                require_pat=True,
                 message=(
                     "GitHub rejected the credentials. "
                     "Enter a valid username and PAT, then try again.\n\n"
@@ -2917,14 +3152,24 @@ class FileManagerApp(QMainWindow):
             )
             return
 
+        if os.name == "nt":
+            detail = (
+                "A console window will get the latest sources "
+                "(git pull, or GitHub zip if Git is not installed), "
+                "rebuild with scripts\\build.bat, and start the new version."
+            )
+        else:
+            detail = (
+                "A terminal will get the latest sources "
+                "(git pull, or GitHub zip if Git is not installed) "
+                "and restart the app from the project virtual environment."
+            )
         reply = QMessageBox.question(
             self,
             "Update and rebuild",
             "The app will close now.\n\n"
-            "A console window will get the latest public sources "
-            "(git pull, or GitHub zip if Git is not installed), rebuild with "
-            "scripts\\build-user.bat, and start the new version.\n\n"
-            "No GitHub login is required. Continue?",
+            f"{detail}\n\n"
+            "A public repo does not need a GitHub login. Continue?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.Yes,
         )
@@ -2952,6 +3197,26 @@ class FileManagerApp(QMainWindow):
     # --------------------------------------------------------
     # Utility
     # --------------------------------------------------------
+    def _notifyCatalogOfTransfer(self, task):
+        operation = getattr(task, "operation", "")
+        sources = list(getattr(task, "source_paths", None) or [])
+        dest = getattr(task, "destination", "") or ""
+        relative_paths = getattr(task, "relative_paths", None)
+        if operation == "delete":
+            for path in sources:
+                self._library_manager.notifyPathDeleted(path)
+            return
+        for index, source in enumerate(sources):
+            name = os.path.basename(source)
+            if relative_paths and index < len(relative_paths):
+                dest_path = os.path.join(dest, relative_paths[index])
+            else:
+                dest_path = os.path.join(dest, name) if dest else ""
+            if operation == "move":
+                self._library_manager.notifyPathRenamed(source, dest_path)
+            elif dest_path:
+                self._library_manager.notifyPathCopied(dest_path)
+
     def _refreshBothPanels(self):
         self._left_panel.refresh(force_rescan=True)
         self._right_panel.refresh(force_rescan=True)
@@ -2986,6 +3251,8 @@ class FileManagerApp(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.removeEventFilter(self)
+        if hasattr(self, "_library_index_queue"):
+            self._library_index_queue.cancelAll()
 
         geo = self.geometry()
         self._settings.setSetting("window_geometry", {

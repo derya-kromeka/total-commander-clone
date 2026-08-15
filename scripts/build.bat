@@ -3,20 +3,18 @@ setlocal EnableExtensions
 
 REM ------------------------------------------------------------
 REM Script: scripts/build.bat
-REM Purpose: Developer build — sync with Git (BuildSync), then build
-REM          a standalone .exe with PyInstaller.
+REM Purpose: Build a standalone .exe with PyInstaller.
 REM Project root: parent of this scripts\ folder (portable; no absolute paths).
+REM
+REM Git push/pull and credentials (URL, username, PAT) live in the app
+REM (Help → Git settings / Check for Updates). This script does not sync Git
+REM unless you pass with-git (legacy BuildSync). skip-git is accepted and ignored.
 REM
 REM Builds to dist_build\ first so a locked dist\TotalCommanderClone does not
 REM block rebuilds. On success, promotes to dist\ when the old folder is removable.
 REM If dist\ is locked after build: stop the app, retry delete, then failsafe-merge
 REM (robocopy staging over dist, leaving locked files in place) so the taskbar
 REM shortcut path keeps working. Only prompts interactively if merge also fails.
-REM
-REM Before building, compares APP_VERSION to the remote and pushes or pulls as needed
-REM (scripts\git-sync.ps1 -Action BuildSync). Pass skip-git to skip that step.
-REM
-REM For a plain rebuild with NO Git (users / no account): use scripts\build-user.bat
 REM ------------------------------------------------------------
 
 cd /d "%~dp0.."
@@ -30,7 +28,7 @@ set "DIST_STAGING=%DIST_BUILD_ROOT%\TotalCommanderClone"
 set "SPEC_FILE=TotalCommanderClone.spec"
 set "PYTHON_EXE="
 set "PYTHON_ARGS="
-set "SKIP_GIT_SYNC="
+set "DO_GIT_SYNC="
 
 :parse_build_args
 if "%~1"=="" goto build_args_done
@@ -42,8 +40,13 @@ if /I "%~1"=="debug" (
     shift
     goto parse_build_args
 )
+if /I "%~1"=="with-git" (
+    set "DO_GIT_SYNC=1"
+    shift
+    goto parse_build_args
+)
 if /I "%~1"=="skip-git" (
-    set "SKIP_GIT_SYNC=1"
+    REM Kept for older callers; Git sync is off by default.
     shift
     goto parse_build_args
 )
@@ -87,11 +90,11 @@ if "%PYTHON_EXE%"=="" (
     exit /b 1
 )
 
-if not defined SKIP_GIT_SYNC (
+if defined DO_GIT_SYNC (
     call :sync_git_before_build
     if errorlevel 1 exit /b 1
 ) else (
-    echo [INFO] Skipping Git version sync ^(skip-git^).
+    echo [INFO] Skipping Git version sync ^(use Help → Git settings / Check for Updates in the app^).
 )
 
 echo [INFO] Installing dependencies (requirements.txt)...

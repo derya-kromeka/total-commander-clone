@@ -1431,6 +1431,7 @@ class FilePanel(QWidget):
 
     pathChanged = pyqtSignal(str)
     pathCopied = pyqtSignal(str)
+    itemRenamed = pyqtSignal(str, str)
     folderCreated = pyqtSignal(str)
     fileDoubleClicked = pyqtSignal(dict)
     selectionChanged = pyqtSignal()
@@ -2800,6 +2801,7 @@ class FilePanel(QWidget):
         try:
             os.rename(old_path, new_path)
             self._source_model.renameEntry(self._rename_source_row, new_name)
+            self.itemRenamed.emit(old_path, new_path)
         except OSError as e:
             from PyQt5.QtWidgets import QMessageBox
             QMessageBox.warning(self, "Rename Failed", str(e))

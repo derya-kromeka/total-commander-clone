@@ -1,12 +1,12 @@
 """
 Total Commander Clone - Libraries Panel
-Sidebar UI for library roots, tags, and tagged folder results.
+Sidebar for library roots, online/offline status, and locate/check actions.
 """
 
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
-    QAbstractItemView, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QPushButton, QSplitter, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+    QHBoxLayout, QLabel, QPushButton, QSplitter, QTreeWidget,
+    QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 from ui_layout_policy import LayoutTier, tierAtMost
 
@@ -14,27 +14,25 @@ from ui_layout_policy import LayoutTier, tierAtMost
 ROLE_ITEM_TYPE = Qt.UserRole
 ROLE_LIBRARY_ID = Qt.UserRole + 1
 ROLE_PATH = Qt.UserRole + 2
-ROLE_TAGS = Qt.UserRole + 3
+ROLE_ROOT_ID = Qt.UserRole + 3
 
 
 # ------------------------------------------------------------
 # Class: LibrariesPanel
-# Purpose: Present libraries, tag filters, and virtual results
-#          without disturbing the main two-pane workflow.
+# Purpose: Present libraries and roots without duplicating search.
 # ------------------------------------------------------------
 class LibrariesPanel(QWidget):
 
     navigateRequested = pyqtSignal(str)
     addLibraryRequested = pyqtSignal()
     scanLibrariesRequested = pyqtSignal()
+    manageLibrariesRequested = pyqtSignal()
+    locateRootRequested = pyqtSignal(str)
+    checkRootRequested = pyqtSignal(str)
 
-    # --------------------------------------------------------
-    # Method: __init__
-    # --------------------------------------------------------
     def __init__(self, parent=None):
         super().__init__(parent)
         self._libraries = []
-        self._tagged_folders = []
         self._selected_library_id = ""
 
         layout = QVBoxLayout(self)
@@ -46,19 +44,18 @@ class LibrariesPanel(QWidget):
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(4)
+        self._btn_manage = QPushButton("Manage")
+        self._btn_manage.setObjectName("bookmarksToolButton")
+        self._btn_manage.clicked.connect(self.manageLibrariesRequested.emit)
         self._btn_add = QPushButton("Add root")
         self._btn_add.setObjectName("bookmarksToolButton")
-        self._btn_add.setToolTip(
-            "Add library root\n\n"
-            "Register the active panel’s folder as a library root for tagging and search."
-        )
+        self._btn_add.setToolTip("Register the active panel’s folder as a library root.")
         self._btn_add.clicked.connect(self.addLibraryRequested.emit)
-        self._btn_scan = QPushButton("Scan")
+        self._btn_scan = QPushButton("Check")
         self._btn_scan.setObjectName("bookmarksToolButton")
-        self._btn_scan.setToolTip(
-            "Scan libraries\n\nRescan folders under all library roots."
-        )
+        self._btn_scan.setToolTip("Check online roots for filesystem changes.")
         self._btn_scan.clicked.connect(self.scanLibrariesRequested.emit)
+        btn_row.addWidget(self._btn_manage)
         btn_row.addWidget(self._btn_add)
         btn_row.addWidget(self._btn_scan)
         btn_row.addStretch()
@@ -73,33 +70,27 @@ class LibrariesPanel(QWidget):
         self._tree.itemDoubleClicked.connect(self._onTreeItemDoubleClicked)
         self._splitter.addWidget(self._tree)
 
-        tags_wrap = QWidget()
-        tags_layout = QVBoxLayout(tags_wrap)
-        tags_layout.setContentsMargins(0, 0, 0, 0)
-        tags_layout.setSpacing(2)
-        self._tags_label = QLabel("Tags")
-        self._tags_label.setObjectName("sidebarSectionTitle")
-        tags_layout.addWidget(self._tags_label)
-        self._tags_list = QListWidget()
-        self._tags_list.setSelectionMode(QAbstractItemView.MultiSelection)
-        self._tags_list.itemSelectionChanged.connect(self._rebuildResults)
-        tags_layout.addWidget(self._tags_list, 1)
-        self._splitter.addWidget(tags_wrap)
+        self._status = QLabel("Select a root to locate or check it.")
+        self._status.setWordWrap(True)
+        self._status.setObjectName("sidebarSectionTitle")
+        self._splitter.addWidget(self._status)
 
-        results_wrap = QWidget()
-        results_layout = QVBoxLayout(results_wrap)
-        results_layout.setContentsMargins(0, 0, 0, 0)
-        results_layout.setSpacing(2)
-        self._results_label = QLabel("Matching folders")
-        self._results_label.setObjectName("sidebarSectionTitle")
-        results_layout.addWidget(self._results_label)
-        self._results_list = QListWidget()
-        self._results_list.itemDoubleClicked.connect(self._onResultDoubleClicked)
-        results_layout.addWidget(self._results_list, 1)
-        self._splitter.addWidget(results_wrap)
+        locate_row = QHBoxLayout()
+        self._btn_locate = QPushButton("Locate")
+        self._btn_locate.setObjectName("bookmarksToolButton")
+        self._btn_locate.clicked.connect(self._onLocate)
+        self._btn_check = QPushButton("Check this")
+        self._btn_check.setObjectName("bookmarksToolButton")
+        self._btn_check.clicked.connect(self._onCheckThis)
+        locate_row.addWidget(self._btn_locate)
+        locate_row.addWidget(self._btn_check)
+        wrap = QWidget()
+        wrap.setLayout(locate_row)
+        self._splitter.addWidget(wrap)
 
-        self._splitter.setSizes([200, 140, 200])
+        self._splitter.setSizes([260, 80, 40])
         layout.addWidget(self._splitter, 1)
+        self._selected_root_id = ""
 
     def splitterSizes(self):
         return self._splitter.sizes()
@@ -112,33 +103,19 @@ class LibrariesPanel(QWidget):
         compact = tierAtMost(tier, LayoutTier.NARROW)
         self._btn_add.setText("Add" if compact else "Add root")
 
-    # --------------------------------------------------------
-    # Method: setData
-    # --------------------------------------------------------
-    def setData(self, libraries, tagged_folders, selected_library_id=""):
+    def setData(self, libraries, tagged_folders=None, selected_library_id=""):
+        del tagged_folders
         self._libraries = libraries or []
-        self._tagged_folders = tagged_folders or []
         available_ids = {lib.get("id", "") for lib in self._libraries}
         self._selected_library_id = selected_library_id if selected_library_id in available_ids else ""
         self._rebuildTree()
-        self._rebuildTags()
-        self._rebuildResults()
 
-    # --------------------------------------------------------
-    # Method: selectedLibraryId
-    # --------------------------------------------------------
     def selectedLibraryId(self):
         return self._selected_library_id
 
-    # --------------------------------------------------------
-    # Method: selectedTags
-    # --------------------------------------------------------
-    def selectedTags(self):
-        return [item.text() for item in self._tags_list.selectedItems()]
+    def selectedRootId(self):
+        return self._selected_root_id
 
-    # --------------------------------------------------------
-    # Method: _rebuildTree
-    # --------------------------------------------------------
     def _rebuildTree(self):
         self._tree.clear()
         for library in self._libraries:
@@ -148,143 +125,58 @@ class LibrariesPanel(QWidget):
             library_item.setData(0, ROLE_LIBRARY_ID, library.get("id", ""))
             library_item.setExpanded(True)
             self._tree.addTopLevelItem(library_item)
-
             for root in library.get("roots", []):
-                suffix = "" if root.get("is_available") else " [offline]"
+                suffix = self._statusSuffix(root)
                 root_item = QTreeWidgetItem([f"{root.get('name', 'Root')}{suffix}"])
                 root_item.setData(0, ROLE_ITEM_TYPE, "root")
                 root_item.setData(0, ROLE_LIBRARY_ID, library.get("id", ""))
                 root_item.setData(0, ROLE_PATH, root.get("path", ""))
-                root_item.setToolTip(0, root.get("path", ""))
+                root_item.setData(0, ROLE_ROOT_ID, root.get("id", ""))
+                root_item.setToolTip(0, root.get("path", "") or "Offline — use Locate")
                 library_item.addChild(root_item)
-
-            library_tags = self._tagsForLibrary(library.get("id", ""))
-            if library_tags:
-                tags_group = QTreeWidgetItem(["Tags"])
-                tags_group.setData(0, ROLE_ITEM_TYPE, "tag_group")
-                tags_group.setData(0, ROLE_LIBRARY_ID, library.get("id", ""))
-                library_item.addChild(tags_group)
-
-                for tag in library_tags:
-                    tag_item = QTreeWidgetItem([tag])
-                    tag_item.setData(0, ROLE_ITEM_TYPE, "tag")
-                    tag_item.setData(0, ROLE_LIBRARY_ID, library.get("id", ""))
-                    tag_item.setData(0, ROLE_TAGS, [tag])
-                    tags_group.addChild(tag_item)
-
         if not self._selected_library_id and self._libraries:
             self._selected_library_id = self._libraries[0].get("id", "")
 
-    # --------------------------------------------------------
-    # Method: _rebuildTags
-    # --------------------------------------------------------
-    def _rebuildTags(self):
-        selected_before = set(self.selectedTags())
-        self._tags_list.clear()
-        for tag in self._tagsForLibrary(self._selected_library_id):
-            item = QListWidgetItem(tag)
-            self._tags_list.addItem(item)
-            if tag in selected_before:
-                item.setSelected(True)
-        self._tags_label.setText(
-            "Tags"
-            if not self._selected_library_id
-            else f"Tags ({self._libraryName(self._selected_library_id)})"
-        )
+    def _statusSuffix(self, root):
+        status = root.get("status") or ""
+        if not root.get("is_available"):
+            return " [offline]"
+        if status == "verification_needed":
+            return " [verify]"
+        if status == "indexing":
+            return " [indexing]"
+        count = int(root.get("item_count") or 0)
+        return f" ({count})" if count else ""
 
-    # --------------------------------------------------------
-    # Method: _rebuildResults
-    # --------------------------------------------------------
-    def _rebuildResults(self):
-        selected_tags = {tag.lower() for tag in self.selectedTags()}
-        self._results_list.clear()
-
-        visible_count = 0
-        for item in self._tagged_folders:
-            if self._selected_library_id and item.get("library_id") != self._selected_library_id:
-                continue
-            item_tags = {tag.lower() for tag in item.get("tags", [])}
-            if selected_tags and not selected_tags.issubset(item_tags):
-                continue
-
-            label = item.get("display_name", "Folder")
-            rel_path = item.get("relative_path", "")
-            if rel_path:
-                label = f"{label} - {rel_path}"
-            if not item.get("is_available"):
-                label = f"{label} [offline]"
-
-            result_item = QListWidgetItem(label)
-            result_item.setToolTip(item.get("resolved_path", ""))
-            result_item.setData(ROLE_PATH, item.get("resolved_path", ""))
-            self._results_list.addItem(result_item)
-            visible_count += 1
-
-        self._results_label.setText(f"Matching folders ({visible_count})")
-
-    # --------------------------------------------------------
-    # Method: _tagsForLibrary
-    # --------------------------------------------------------
-    def _tagsForLibrary(self, library_id):
-        tags = set()
-        for item in self._tagged_folders:
-            if library_id and item.get("library_id") != library_id:
-                continue
-            for tag in item.get("tags", []):
-                if tag:
-                    tags.add(tag)
-        return sorted(tags, key=lambda value: value.lower())
-
-    # --------------------------------------------------------
-    # Method: _libraryName
-    # --------------------------------------------------------
-    def _libraryName(self, library_id):
-        for library in self._libraries:
-            if library.get("id") == library_id:
-                return library.get("name", "Library")
-        return "Library"
-
-    # --------------------------------------------------------
-    # Method: _onTreeItemClicked
-    # --------------------------------------------------------
     def _onTreeItemClicked(self, item, column):
         del column
-        item_type = item.data(0, ROLE_ITEM_TYPE)
-        library_id = item.data(0, ROLE_LIBRARY_ID) or ""
+        self._selected_library_id = item.data(0, ROLE_LIBRARY_ID) or ""
+        if item.data(0, ROLE_ITEM_TYPE) == "root":
+            self._selected_root_id = item.data(0, ROLE_ROOT_ID) or ""
+            path = item.data(0, ROLE_PATH) or ""
+            self._status.setText(path or "This root is offline. Use Locate to point it at the folder.")
+        else:
+            self._selected_root_id = ""
+            self._status.setText("Select a root to locate or check it.")
 
-        if item_type in ("library", "root", "tag"):
-            self._selected_library_id = library_id
-            self._rebuildTags()
-            if item_type == "tag":
-                self._selectOnlyTag(item.text(0))
-            self._rebuildResults()
-
-    # --------------------------------------------------------
-    # Method: _onTreeItemDoubleClicked
-    # --------------------------------------------------------
     def _onTreeItemDoubleClicked(self, item, column):
         del column
-        item_type = item.data(0, ROLE_ITEM_TYPE)
-        if item_type != "root":
+        if item.data(0, ROLE_ITEM_TYPE) != "root":
             return
         path = item.data(0, ROLE_PATH) or ""
         if path:
             self.navigateRequested.emit(path)
+        else:
+            root_id = item.data(0, ROLE_ROOT_ID) or ""
+            if root_id:
+                self.locateRootRequested.emit(root_id)
 
-    # --------------------------------------------------------
-    # Method: _onResultDoubleClicked
-    # --------------------------------------------------------
-    def _onResultDoubleClicked(self, item):
-        path = item.data(ROLE_PATH) or ""
-        if path:
-            self.navigateRequested.emit(path)
+    def _onLocate(self):
+        if self._selected_root_id:
+            self.locateRootRequested.emit(self._selected_root_id)
 
-    # --------------------------------------------------------
-    # Method: _selectOnlyTag
-    # --------------------------------------------------------
-    def _selectOnlyTag(self, tag_name):
-        self._tags_list.blockSignals(True)
-        for index in range(self._tags_list.count()):
-            item = self._tags_list.item(index)
-            item.setSelected(item.text() == tag_name)
-        self._tags_list.blockSignals(False)
+    def _onCheckThis(self):
+        if self._selected_root_id:
+            self.checkRootRequested.emit(self._selected_root_id)
+        else:
+            self.scanLibrariesRequested.emit()

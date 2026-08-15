@@ -100,7 +100,8 @@ class SettingsDialog(QDialog):
         )
         self._check_updates.setToolTip(
             "Compares this app’s version to APP_VERSION on the Git remote.\n"
-            "If a newer version exists, you can pull and rebuild."
+            "If a newer version exists, you can pull and rebuild.\n"
+            "Remote URL, username, and PAT are set under Help → Git settings."
         )
         form.addRow("Updates", self._check_updates)
 

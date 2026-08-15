@@ -11,6 +11,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.6.0] - 2026-08-15
+
+### Added
+
+- **Indexed library catalog**: Libraries now keep a local SQLite index of files and folders under each root, so search stays fast after the first scan.
+- **Shared properties**: Built-in Tags and Notes plus user-defined text, number, date, yes/no, and choice fields. Assign to selected items, a folder, files in a folder, or all descendants, with optional inheritance for items added later.
+- **Portable roots**: Marker-based rediscovery still works across drive letters and OSes. Offline roots can be rebound with Locate; conflicting markers are rejected. Moved roots offer Check changes, Rebuild index, or Later.
+- **Multi-library search**: The library browser searches one or more libraries at once, with paged results, tag any/all matching, and typed field filters.
+- Library Manager to create, rename, delete, and configure roots (include/exclude globs, hidden items, files vs folders).
+
+### Changed
+
+- Library data lives in `library_catalog.sqlite3` instead of `state.json`. Existing libraries and folder tags are migrated once. Profile export/import includes a metadata snapshot without the rebuildable file index.
+
+## [0.5.1] - 2026-08-15
+
+### Added
+
+- **OS install scripts** with clear names: `scripts/install-windows.bat`, `scripts/install-linux.sh`, `scripts/install-macos.sh` (and matching `run-windows.bat` / `run-linux.sh` / `run-macos.sh`). Wrappers `install.bat` / `install.sh` still dispatch to the right OS script.
+- **Help → Git settings**: set remote URL, GitHub username, optional PAT, and commit name/email; test the remote; save credentials on Windows, Linux, and macOS.
+- Linux/macOS in-app update path (`scripts/update-and-rebuild.sh`) pulls or downloads a public zip, then restarts from `.venv`.
+
+### Changed
+
+- One install path for everyone: Git push/pull and credentials live in the app, so there is no separate “user” vs “developer” install. `scripts/build.bat` no longer syncs Git unless you pass `with-git`.
+- PAT storage works off Windows (chmod-600 file). Git commands in the app never wait on a terminal password prompt.
+
+### Fixed
+
+- Saving Git username/URL/PAT no longer fails on Linux and macOS.
+- Version checks and updates use the configured GitHub remote, not only the public upstream.
+
 ## [0.5.0] - 2026-08-15
 
 ### Added

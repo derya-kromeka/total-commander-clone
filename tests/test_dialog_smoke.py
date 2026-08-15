@@ -94,7 +94,13 @@ class DialogSmokeTests(unittest.TestCase):
 
     def test_small_dialogs_construct(self):
         from bookmark_dialogs import BookmarkEditDialog
-        from library_dialogs import LibraryRootDialog, TagAssignmentDialog
+        from library_dialogs import (
+            FieldDefinitionDialog,
+            LibraryRootDialog,
+            PropertyAssignmentDialog,
+            TagAssignmentDialog,
+        )
+        from library_management_dialog import LibraryManagementDialog
         from git_credentials_dialog import GitCredentialsDialog
         from file_properties_dialog import FilePropertiesDialog
         from transfers_bar import TransfersBar
@@ -102,8 +108,20 @@ class DialogSmokeTests(unittest.TestCase):
         BookmarkEditDialog().close()
         LibraryRootDialog([]).close()
         TagAssignmentDialog("C:\\tmp").close()
+        PropertyAssignmentDialog(["C:\\tmp"], []).close()
+        FieldDefinitionDialog().close()
+        class _FakeLibManager:
+            def getLibraries(self):
+                return []
+
+            def getLibrary(self, library_id):
+                del library_id
+                return None
+
+        LibraryManagementDialog(_FakeLibManager()).close()
         git = GitCredentialsDialog("")
         self.assertTrue(git._pat.accessibleName())
+        self.assertTrue(git._remote_url.accessibleName())
         git.close()
         entry = {
             "name": "x.txt",

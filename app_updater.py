@@ -19,10 +19,13 @@ from config_backup import (
     _authExtraHeaderArgs,
     _loadSavedGitAuth,
     _runGit,
+    applyGitAccountToRepo,
     findGitRepoRoot,
     loadGitAccountProfile,
+    parseGitHubOwnerRepo,
     resolveBackupRepoRoot,
     runGitPushWithAuth,
+    setGitRemoteUrl,
 )
 
 
@@ -91,13 +94,15 @@ def compareVersions(a: str, b: str) -> Optional[int]:
 def _looksLikeProjectRoot(path: str) -> bool:
     if not path or not os.path.isdir(path):
         return False
-    return (
-        os.path.isfile(os.path.join(path, "main.py"))
-        and os.path.isfile(os.path.join(path, "scripts", "update-and-rebuild.bat"))
-        and (
-            os.path.isfile(os.path.join(path, "scripts", "build-user.bat"))
-            or os.path.isfile(os.path.join(path, "scripts", "build.bat"))
-        )
+    if not os.path.isfile(os.path.join(path, "main.py")):
+        return False
+    scripts = os.path.join(path, "scripts")
+    return os.path.isdir(scripts) and (
+        os.path.isfile(os.path.join(scripts, "install-windows.bat"))
+        or os.path.isfile(os.path.join(scripts, "install-linux.sh"))
+        or os.path.isfile(os.path.join(scripts, "install-macos.sh"))
+        or os.path.isfile(os.path.join(scripts, "install.bat"))
+        or os.path.isfile(os.path.join(scripts, "update-and-rebuild.bat"))
     )
 
 
@@ -228,7 +233,13 @@ def ensurePublicOrigin(repo_root: str) -> Tuple[bool, str]:
 # Function: fetchPublicAppVersionViaHttps
 # Purpose: Read APP_VERSION from raw.githubusercontent.com (anonymous).
 # ------------------------------------------------------------
-def fetchPublicAppVersionViaHttps(branch: str = PUBLIC_DEFAULT_BRANCH) -> Tuple[Optional[str], str]:
+def fetchPublicAppVersionViaHttps(
+    branch: str = PUBLIC_DEFAULT_BRANCH,
+    owner: str = PUBLIC_REPO_OWNER,
+    repo: str = PUBLIC_REPO_NAME,
+) -> Tuple[Optional[str], str]:
+    owner = (owner or PUBLIC_REPO_OWNER).strip() or PUBLIC_REPO_OWNER
+    repo = (repo or PUBLIC_REPO_NAME).strip() or PUBLIC_REPO_NAME
     branches: List[str] = []
     if branch:
         branches.append(branch)
@@ -240,8 +251,7 @@ def fetchPublicAppVersionViaHttps(branch: str = PUBLIC_DEFAULT_BRANCH) -> Tuple[
     errors = []
     for br in branches:
         url = (
-            f"https://raw.githubusercontent.com/{PUBLIC_REPO_OWNER}/"
-            f"{PUBLIC_REPO_NAME}/{br}/app_version.py"
+            f"https://raw.githubusercontent.com/{owner}/{repo}/{br}/app_version.py"
         )
         try:
             req = urllib.request.Request(
@@ -274,19 +284,26 @@ def _fetchRemoteBranch(repo_root: str, remote: str, branch: str) -> Tuple[bool, 
     # Public HTTPS remotes normally succeed without auth. Retry with PAT only
     # when a saved account exists (e.g. private fork / rate limits).
     auth = _loadSavedGitAuth(repo_root)
-    if not auth or not auth.get("pat"):
+    header_args = _authExtraHeaderArgs(auth)
+    if not header_args:
         return False, out
-
-    import base64
-
-    pair = f"{auth['username']}:{auth['pat']}"
-    encoded = base64.b64encode(pair.encode("ascii")).decode("ascii")
-    header = f"AUTHORIZATION: basic {encoded}"
     return _runGit(
         repo_root,
-        ["-c", f"http.extraHeader={header}", "fetch", remote, branch],
+        [*header_args, "fetch", remote, branch],
         timeout=90,
     )
+
+
+# ------------------------------------------------------------
+# Function: resolveGithubRepo
+# Purpose: Owner/repo/URL from origin or saved profile, else public defaults.
+# ------------------------------------------------------------
+def resolveGithubRepo(repo_root: Optional[str]) -> Tuple[str, str, str]:
+    url = getRemoteUrl(repo_root or "")
+    parsed = parseGitHubOwnerRepo(url)
+    if parsed:
+        return parsed[0], parsed[1], url
+    return PUBLIC_REPO_OWNER, PUBLIC_REPO_NAME, url or PUBLIC_REPO_HTTPS
 
 
 # ------------------------------------------------------------
@@ -316,26 +333,32 @@ def checkRemoteAppVersion(
         result["status"] = "no_repo"
         result["message"] = (
             "Could not find the project folder near this app "
-            "(needs main.py and scripts\\update-and-rebuild.bat).\n"
+            "(needs main.py and scripts/install-*.bat or install-*.sh).\n"
             f"Public repo: https://github.com/{PUBLIC_REPO_OWNER}/{PUBLIC_REPO_NAME}"
         )
         return result
 
-    script = os.path.join(repo_root, "scripts", "update-and-rebuild.bat")
-    if not os.path.isfile(script):
+    has_update_script = (
+        os.path.isfile(os.path.join(repo_root, "scripts", "update-and-rebuild.bat"))
+        or os.path.isfile(os.path.join(repo_root, "scripts", "update-and-rebuild.sh"))
+    )
+    if not has_update_script:
         result["status"] = "no_script"
         result["message"] = (
-            f"Update script not found:\n{script}\n\n"
-            "Keep the full project folder so updates can download sources and rebuild."
+            "Update script not found in scripts/ "
+            "(update-and-rebuild.bat or update-and-rebuild.sh).\n\n"
+            "Keep the full project folder so updates can download sources."
         )
         return result
 
+    owner, repo_name, remote_url = resolveGithubRepo(repo_root)
     has_git = _gitAvailable() and os.path.isdir(os.path.join(repo_root, ".git"))
     if has_git:
         ensurePublicOrigin(repo_root)
         remote = _defaultRemote(repo_root)
         branch = _currentBranch(repo_root)
         result["remote_name"] = remote
+        owner, repo_name, remote_url = resolveGithubRepo(repo_root)
     else:
         remote = "origin"
         branch = PUBLIC_DEFAULT_BRANCH
@@ -343,8 +366,10 @@ def checkRemoteAppVersion(
     result["branch"] = branch
 
     remote_version = None
-    # 1) Anonymous HTTPS (no account, no Git) — preferred for the public repo.
-    https_ver, https_info = fetchPublicAppVersionViaHttps(branch)
+    # 1) Anonymous HTTPS (no account, no Git) — uses configured GitHub remote.
+    https_ver, https_info = fetchPublicAppVersionViaHttps(
+        branch, owner=owner, repo=repo_name
+    )
     if https_ver:
         remote_version = https_ver
         result["source"] = "https"
@@ -358,7 +383,7 @@ def checkRemoteAppVersion(
             result["status"] = "fetch_failed"
             result["message"] = (
                 "Could not read the latest version from GitHub "
-                f"({PUBLIC_REPO_OWNER}/{PUBLIC_REPO_NAME}).\n\n"
+                f"({owner}/{repo_name}).\n\n"
                 f"HTTPS: {https_info}\n"
                 f"Git: {(fetch_out or 'Unknown fetch error')[:400]}"
             )
@@ -382,7 +407,7 @@ def checkRemoteAppVersion(
         result["status"] = "fetch_failed"
         result["message"] = (
             "Could not read the latest version from GitHub "
-            f"({PUBLIC_REPO_OWNER}/{PUBLIC_REPO_NAME}).\n\n"
+            f"({owner}/{repo_name}).\n\n"
             f"{https_info}\n\n"
             "No Git install is required when the network can reach GitHub."
         )
@@ -419,9 +444,11 @@ def checkRemoteAppVersion(
                 f"Your version (v{local_version}) is newer than "
                 f"GitHub (v{remote_version}).\n\n"
                 f"Branch: {branch}\n"
-                f"Repo:   {PUBLIC_REPO_OWNER}/{PUBLIC_REPO_NAME}\n\n"
-                "You can publish this version to GitHub (commit if needed, "
-                "then a normal push — never force-push)."
+                f"Repo:   {owner}/{repo_name}\n"
+                f"URL:    {remote_url}\n\n"
+                "You can publish this version (commit if needed, "
+                "then a normal push — never force-push).\n"
+                "Set remote URL, username, and PAT under Help → Git settings."
             )
         else:
             result["message"] = (
@@ -440,20 +467,25 @@ def checkRemoteAppVersion(
         return result
 
     result["status"] = "update_available"
+    has_local_git = _gitAvailable() and os.path.isdir(os.path.join(repo_root, ".git"))
     how = (
-        "download the public zip (no Git install needed)"
-        if not (_gitAvailable() and os.path.isdir(os.path.join(repo_root, ".git")))
-        else "pull the latest public code"
+        "pull the latest code"
+        if has_local_git
+        else "download the public zip (no Git install needed)"
     )
+    if os.name == "nt":
+        after = "rebuild the .exe (scripts\\build.bat), and restart."
+    else:
+        after = "then restart from the project virtual environment."
     result["message"] = (
         f"A newer version is available on GitHub.\n\n"
         f"Current:  v{local_version}\n"
         f"GitHub:   v{remote_version}\n"
-        f"Repo:     {PUBLIC_REPO_OWNER}/{PUBLIC_REPO_NAME}\n"
+        f"Repo:     {owner}/{repo_name}\n"
         f"Branch:   {branch}\n\n"
-        f"Update now? This will close the app, {how}, "
-        "rebuild the .exe (scripts\\build-user.bat), and restart.\n"
-        "No GitHub login is required."
+        f"Update now? This will close the app, {how}, {after}\n"
+        "A public repo does not need a GitHub login. "
+        "Private remotes: set a PAT under Help → Git settings."
     )
     return result
 
@@ -585,10 +617,19 @@ def publishLocalVersionToGitHub(
     use_auth = auth if auth and auth.get("pat") else _loadSavedGitAuth(repo_root)
     header_args = _authExtraHeaderArgs(use_auth)
 
-    # Prefer configuring remote URL when auth dialog supplied one.
     if auth and (auth.get("remote_url") or "").strip():
-        url = (auth.get("remote_url") or "").strip()
-        _runGit(repo_root, ["remote", "set-url", remote, url], timeout=15)
+        setGitRemoteUrl(repo_root, auth.get("remote_url") or "")
+    applyGitAccountToRepo(
+        repo_root,
+        {
+            "remoteUrl": (auth or {}).get("remote_url") or "",
+            "githubUsername": (use_auth or {}).get("username")
+            or (auth or {}).get("username")
+            or "",
+            "commitName": (auth or {}).get("commit_name") or "",
+            "commitEmail": (auth or {}).get("commit_email") or "",
+        },
+    )
 
     fetch_cmd = [*header_args, "fetch", remote, branch] if header_args else [
         "fetch",
@@ -678,18 +719,22 @@ def publishLocalVersionToGitHub(
 
 # ------------------------------------------------------------
 # Function: launchUpdateAndRebuild
-# Purpose: Start scripts/update-and-rebuild.bat in a new console,
-#          detached so it survives after this process exits.
+# Purpose: Start the OS update script detached so it survives quit.
+#          Windows: scripts/update-and-rebuild.bat
+#          Linux/macOS: scripts/update-and-rebuild.sh
 # ------------------------------------------------------------
 def launchUpdateAndRebuild(repo_root: str) -> Tuple[bool, str]:
     if not repo_root or not os.path.isdir(repo_root):
         return False, "Invalid project root."
 
-    bat = os.path.join(repo_root, "scripts", "update-and-rebuild.bat")
-    if not os.path.isfile(bat):
-        return False, f"Missing update script:\n{bat}"
+    if os.name == "nt":
+        script = os.path.join(repo_root, "scripts", "update-and-rebuild.bat")
+    else:
+        script = os.path.join(repo_root, "scripts", "update-and-rebuild.sh")
+    if not os.path.isfile(script):
+        return False, f"Missing update script:\n{script}"
 
-    # Only configure origin when Git + .git are available.
+    # Only add origin when Git + .git are available and origin is missing.
     if _gitAvailable() and os.path.isdir(os.path.join(repo_root, ".git")):
         ensurePublicOrigin(repo_root)
 
@@ -709,7 +754,7 @@ def launchUpdateAndRebuild(repo_root: str) -> Tuple[bool, str]:
                     "Total Commander Clone — Update",
                     "cmd.exe",
                     "/c",
-                    bat,
+                    script,
                 ],
                 cwd=repo_root,
                 close_fds=True,
@@ -717,7 +762,7 @@ def launchUpdateAndRebuild(repo_root: str) -> Tuple[bool, str]:
             )
         else:
             subprocess.Popen(
-                ["bash", bat.replace(".bat", ".sh")],
+                ["bash", script],
                 cwd=repo_root,
                 start_new_session=True,
             )

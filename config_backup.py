@@ -136,6 +136,7 @@ def writeConfigBackup(
     settings: Dict[str, Any],
     state: Dict[str, Any],
     project_root: Optional[str] = None,
+    library_snapshot: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
     repo_root = resolveBackupRepoRoot(project_root)
     if not repo_root:
@@ -151,7 +152,7 @@ def writeConfigBackup(
         "bookmarks.json": {
             "bookmarks": (state or {}).get("bookmarks", []),
         },
-        "libraries.json": {
+        "libraries.json": library_snapshot or {
             "libraries": (state or {}).get("libraries", []),
             "folder_tags": (state or {}).get("folder_tags", {}),
             "saved_library_filters": (state or {}).get("saved_library_filters", []),
@@ -221,6 +222,18 @@ def _hiddenSubprocessKwargs() -> Dict[str, Any]:
 
 
 # ------------------------------------------------------------
+# Function: _gitEnv
+# Purpose: Environment that never blocks the GUI on credential prompts.
+# ------------------------------------------------------------
+def _gitEnv() -> Dict[str, str]:
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    env.setdefault("GIT_ASKPASS", "echo")
+    env.setdefault("GCM_INTERACTIVE", "Never")
+    return env
+
+
+# ------------------------------------------------------------
 # Function: _runGit
 # Purpose: Run a git command in repo_root; return (ok, combined output).
 # ------------------------------------------------------------
@@ -233,6 +246,7 @@ def _runGit(repo_root: str, args, timeout: int = 60):
             text=True,
             timeout=timeout,
             check=False,
+            env=_gitEnv(),
             **_hiddenSubprocessKwargs(),
         )
         out = (completed.stdout or "") + (completed.stderr or "")
@@ -242,56 +256,217 @@ def _runGit(repo_root: str, args, timeout: int = 60):
 
 
 # ------------------------------------------------------------
-# Function: _loadSavedGitAuth
-# Purpose: Username + DPAPI-decrypted PAT from .git-account.* (Windows).
+# Function: normalizeRemoteUrl
+# Purpose: Accept owner/repo, github.com/..., or a full URL; return HTTPS.
 # ------------------------------------------------------------
-def _loadSavedGitAuth(repo_root: str):
-    profile_path = os.path.join(repo_root, ".git-account.json")
-    pat_path = os.path.join(repo_root, ".git-account.pat")
-    if not os.path.isfile(profile_path) or not os.path.isfile(pat_path):
+def normalizeRemoteUrl(url: str) -> str:
+    raw = (url or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("git@"):
+        # git@github.com:owner/repo.git → https://github.com/owner/repo.git
+        rest = raw[4:]
+        if ":" in rest:
+            host, path = rest.split(":", 1)
+            raw = f"https://{host}/{path}"
+        else:
+            return raw
+    if not re.match(r"^https?://", raw, flags=re.IGNORECASE):
+        if re.match(r"^[\w.\-]+/[\w.\-]+(?:\.git)?$", raw):
+            raw = f"https://github.com/{raw}"
+        else:
+            raw = f"https://{raw}"
+    if "github.com" in raw.lower() and not raw.endswith(".git"):
+        raw = f"{raw}.git"
+    return raw
+
+
+# ------------------------------------------------------------
+# Function: parseGitHubOwnerRepo
+# Purpose: Extract (owner, repo) from a GitHub HTTPS or SSH URL.
+# ------------------------------------------------------------
+def parseGitHubOwnerRepo(url: str) -> Optional[Tuple[str, str]]:
+    raw = (url or "").strip()
+    if not raw:
+        return None
+    raw = raw.replace("\\", "/")
+    match = re.search(
+        r"(?:github\.com[:/])([^/]+)/([^/]+?)(?:\.git)?/?$",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    owner = match.group(1).strip()
+    repo = match.group(2).strip()
+    if repo.lower().endswith(".git"):
+        repo = repo[:-4]
+    if not owner or not repo:
+        return None
+    return owner, repo
+
+
+# ------------------------------------------------------------
+# Function: gitPatIsSaved
+# Purpose: True when .git-account.pat exists for this repo.
+# ------------------------------------------------------------
+def gitPatIsSaved(repo_root: str) -> bool:
+    if not repo_root:
+        return False
+    return os.path.isfile(os.path.join(repo_root, ".git-account.pat"))
+
+
+# ------------------------------------------------------------
+# Function: _looksLikeDpapiPat
+# Purpose: Windows ConvertFrom-SecureString blobs start with hex 01000000.
+# ------------------------------------------------------------
+def _looksLikeDpapiPat(text: str) -> bool:
+    compact = re.sub(r"\s+", "", (text or "").lstrip("\ufeff"))
+    return bool(re.match(r"^01000000[0-9a-fA-F]+$", compact))
+
+
+# ------------------------------------------------------------
+# Function: _readPatFile
+# Purpose: Decrypt DPAPI (Windows) or read chmod-600 plaintext (v1:).
+# ------------------------------------------------------------
+def _readPatFile(pat_path: str) -> Optional[str]:
+    if not pat_path or not os.path.isfile(pat_path):
         return None
     try:
-        with open(profile_path, "r", encoding="utf-8") as f:
-            profile = json.load(f)
-        username = (profile.get("githubUsername") or "").strip()
-        if not username:
-            return None
-        if os.name != "nt":
-            return None
-        # Escape single quotes for PowerShell single-quoted path literal.
+        with open(pat_path, "r", encoding="utf-8-sig") as f:
+            raw = (f.read() or "").strip()
+    except Exception:
+        return None
+    if not raw:
+        return None
+    if raw.startswith("v1:"):
+        return raw[3:].strip() or None
+    if os.name == "nt" and _looksLikeDpapiPat(raw):
         pat_ps = pat_path.replace("'", "''")
         ps = (
             "$ErrorActionPreference='Stop';"
-            f"$enc = Get-Content -LiteralPath '{pat_ps}' -Raw -Encoding UTF8;"
+            f"$enc = [System.IO.File]::ReadAllText('{pat_ps}').Trim().TrimStart([char]0xFEFF);"
             "$sec = ConvertTo-SecureString -String $enc;"
             "$bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec);"
             "try { [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr) }"
             "finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }"
         )
-        completed = subprocess.run(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-WindowStyle",
-                "Hidden",
-                "-Command",
-                ps,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=20,
-            check=False,
-            **_hiddenSubprocessKwargs(),
-        )
+        try:
+            completed = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    ps,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+                **_hiddenSubprocessKwargs(),
+            )
+        except Exception:
+            return None
         if completed.returncode != 0:
             return None
         pat = (completed.stdout or "").strip()
-        if not pat:
-            return None
-        return {"username": username, "pat": pat}
-    except Exception:
+        return pat or None
+    # Legacy / unix plaintext without prefix.
+    if not _looksLikeDpapiPat(raw):
+        return raw
+    return None
+
+
+# ------------------------------------------------------------
+# Function: _writePatFile
+# Purpose: Windows DPAPI encrypt, else v1: plaintext with mode 0o600.
+# ------------------------------------------------------------
+def _writePatFile(pat_path: str, pat: str) -> Tuple[bool, str]:
+    pat = (pat or "").strip()
+    if not pat:
+        return False, "PAT is empty."
+    if os.name == "nt":
+        import tempfile
+
+        tmp_path = None
+        try:
+            fd, tmp_path = tempfile.mkstemp(prefix="tcc-pat-", suffix=".txt")
+            os.close(fd)
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write(pat)
+            tmp_ps = tmp_path.replace("'", "''")
+            pat_ps = pat_path.replace("'", "''")
+            ps = (
+                "$ErrorActionPreference='Stop';"
+                f"$plain = (Get-Content -LiteralPath '{tmp_ps}' -Raw -Encoding UTF8).Trim();"
+                "if (-not $plain) { throw 'Empty PAT' };"
+                "$secure = ConvertTo-SecureString -String $plain -AsPlainText -Force;"
+                "$enc = ConvertFrom-SecureString -SecureString $secure;"
+                f"[System.IO.File]::WriteAllText('{pat_ps}', $enc);"
+            )
+            completed = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    ps,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+                **_hiddenSubprocessKwargs(),
+            )
+            if completed.returncode != 0:
+                err = (completed.stderr or completed.stdout or "encrypt failed").strip()
+                return False, f"Could not encrypt PAT: {err[:300]}"
+            return True, "Saved encrypted PAT."
+        except Exception as exc:
+            return False, str(exc)
+        finally:
+            if tmp_path:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+    try:
+        with open(pat_path, "w", encoding="utf-8") as f:
+            f.write("v1:" + pat)
+        try:
+            os.chmod(pat_path, 0o600)
+        except OSError:
+            pass
+        return True, "Saved PAT (file readable only by this account)."
+    except Exception as exc:
+        return False, f"Could not write PAT file: {exc}"
+
+
+# ------------------------------------------------------------
+# Function: _loadSavedGitAuth
+# Purpose: Username + PAT from .git-account.* (all platforms).
+# ------------------------------------------------------------
+def _loadSavedGitAuth(repo_root: str):
+    if not repo_root:
         return None
+    profile = loadGitAccountProfile(repo_root) or {}
+    username = (profile.get("githubUsername") or "").strip()
+    if not username:
+        return None
+    pat = _readPatFile(os.path.join(repo_root, ".git-account.pat"))
+    if not pat:
+        return None
+    return {"username": username, "pat": pat}
+
+
+def loadSavedGitAuth(repo_root: str):
+    """Public alias for _loadSavedGitAuth."""
+    return _loadSavedGitAuth(repo_root)
 
 
 # ------------------------------------------------------------
@@ -315,9 +490,132 @@ def loadGitAccountProfile(repo_root: str) -> Optional[Dict[str, Any]]:
 
 
 # ------------------------------------------------------------
+# Function: clearSavedGitPat
+# Purpose: Delete the local PAT file; leave profile JSON in place.
+# ------------------------------------------------------------
+def clearSavedGitPat(repo_root: str) -> Tuple[bool, str]:
+    if not repo_root:
+        return False, "Invalid repository root."
+    pat_path = os.path.join(repo_root, ".git-account.pat")
+    if not os.path.isfile(pat_path):
+        return True, "No saved PAT."
+    try:
+        os.remove(pat_path)
+        return True, "Removed saved PAT."
+    except Exception as exc:
+        return False, str(exc)
+
+
+# ------------------------------------------------------------
+# Function: setGitRemoteUrl
+# Purpose: git remote add/set-url origin (or current default remote).
+# ------------------------------------------------------------
+def setGitRemoteUrl(repo_root: str, url: str) -> Tuple[bool, str]:
+    if not repo_root or not os.path.isdir(os.path.join(repo_root, ".git")):
+        return False, "This folder is not a Git checkout (no .git)."
+    url = normalizeRemoteUrl(url)
+    if not url:
+        return False, "Remote URL is empty."
+    ok, remotes = _runGit(repo_root, ["remote"], timeout=15)
+    names = [line.strip() for line in (remotes or "").splitlines() if line.strip()] if ok else []
+    remote = "origin" if (not names or "origin" in names) else names[0]
+    if remote in names:
+        ok, out = _runGit(repo_root, ["remote", "set-url", remote, url], timeout=15)
+    else:
+        ok, out = _runGit(repo_root, ["remote", "add", remote, url], timeout=15)
+    if ok:
+        return True, f"{remote} → {url}"
+    return False, out or "Could not set remote URL."
+
+
+# ------------------------------------------------------------
+# Function: applyGitAccountToRepo
+# Purpose: Apply saved remote URL and commit identity to the local repo.
+# ------------------------------------------------------------
+def applyGitAccountToRepo(
+    repo_root: str,
+    profile: Optional[Dict[str, Any]] = None,
+) -> Tuple[bool, str]:
+    if not repo_root or not os.path.isdir(os.path.join(repo_root, ".git")):
+        return False, "This folder is not a Git checkout (no .git)."
+    data = profile if isinstance(profile, dict) else (loadGitAccountProfile(repo_root) or {})
+    notes = []
+    url = normalizeRemoteUrl((data.get("remoteUrl") or "").strip())
+    if url:
+        ok, msg = setGitRemoteUrl(repo_root, url)
+        if ok:
+            notes.append(msg)
+        else:
+            return False, msg
+    name = (data.get("commitName") or "").strip()
+    email = (data.get("commitEmail") or "").strip()
+    username = (data.get("githubUsername") or "").strip()
+    if name:
+        ok, out = _runGit(repo_root, ["config", "--local", "user.name", name], timeout=15)
+        if not ok:
+            return False, out or "Could not set user.name."
+        notes.append(f"commit name: {name}")
+    elif username:
+        ok, existing = _runGit(repo_root, ["config", "--get", "user.name"], timeout=15)
+        if not (ok and (existing or "").strip()):
+            ok, out = _runGit(
+                repo_root, ["config", "--local", "user.name", username], timeout=15
+            )
+            if not ok:
+                return False, out or "Could not set user.name."
+            notes.append(f"commit name: {username}")
+    if email:
+        ok, out = _runGit(repo_root, ["config", "--local", "user.email", email], timeout=15)
+        if not ok:
+            return False, out or "Could not set user.email."
+        notes.append(f"commit email: {email}")
+    elif username:
+        ok, existing = _runGit(repo_root, ["config", "--get", "user.email"], timeout=15)
+        if not (ok and (existing or "").strip()):
+            generated = f"{username}@users.noreply.github.com"
+            ok, out = _runGit(
+                repo_root, ["config", "--local", "user.email", generated], timeout=15
+            )
+            if not ok:
+                return False, out or "Could not set user.email."
+            notes.append(f"commit email: {generated}")
+    return True, "; ".join(notes) if notes else "Nothing to apply."
+
+
+# ------------------------------------------------------------
+# Function: testGitRemoteAccess
+# Purpose: Non-interactive git ls-remote using optional username/PAT.
+# ------------------------------------------------------------
+def testGitRemoteAccess(
+    repo_root: str,
+    url: str = "",
+    auth: Optional[Dict[str, Any]] = None,
+) -> Tuple[bool, str]:
+    target = normalizeRemoteUrl(url)
+    if not target and repo_root:
+        ok, current = _runGit(repo_root, ["remote", "get-url", "origin"], timeout=15)
+        if ok:
+            target = (current or "").strip()
+    if not target:
+        return False, "No remote URL to test."
+    cwd = repo_root if repo_root and os.path.isdir(repo_root) else os.path.dirname(os.path.abspath(__file__))
+    use_auth = auth if auth and auth.get("pat") else _loadSavedGitAuth(repo_root or "")
+    header_args = _authExtraHeaderArgs(use_auth)
+    args = [*header_args, "ls-remote", "--heads", target] if header_args else [
+        "ls-remote",
+        "--heads",
+        target,
+    ]
+    ok, out = _runGit(cwd, args, timeout=45)
+    if ok:
+        return True, f"Reached {target}"
+    return False, out or "ls-remote failed."
+
+
+# ------------------------------------------------------------
 # Function: saveGitAccountCredentials
-# Purpose: Save GitHub username/URL to .git-account.json and encrypt
-#          PAT into .git-account.pat (Windows DPAPI via PowerShell).
+# Purpose: Save GitHub username/URL to .git-account.json and store
+#          PAT in .git-account.pat (DPAPI on Windows, 0o600 elsewhere).
 # ------------------------------------------------------------
 def saveGitAccountCredentials(
     repo_root: str,
@@ -326,25 +624,25 @@ def saveGitAccountCredentials(
     pat: str = "",
     commit_name: str = "",
     commit_email: str = "",
+    apply_to_repo: bool = True,
 ) -> Tuple[bool, str]:
     if not repo_root or not os.path.isdir(repo_root):
         return False, "Invalid repository root."
     username = (username or "").strip()
-    if not username:
-        return False, "GitHub username is required."
-    if os.name != "nt":
-        return False, "Saving an encrypted PAT is only supported on Windows."
+    pat = (pat or "").strip()
+    if pat and not username:
+        return False, "GitHub username is required when saving a PAT."
 
     existing = loadGitAccountProfile(repo_root) or {}
     profile = {
         "label": existing.get("label") or "default",
-        "remoteUrl": (remote_url or "").strip() or (existing.get("remoteUrl") or ""),
+        "remoteUrl": normalizeRemoteUrl(remote_url)
+        or (existing.get("remoteUrl") or ""),
         "commitName": (commit_name or "").strip() or (existing.get("commitName") or ""),
         "commitEmail": (commit_email or "").strip() or (existing.get("commitEmail") or ""),
-        "githubUsername": username,
+        "githubUsername": username or (existing.get("githubUsername") or ""),
     }
     profile_path = os.path.join(repo_root, ".git-account.json")
-    pat_path = os.path.join(repo_root, ".git-account.pat")
     try:
         with open(profile_path, "w", encoding="utf-8") as f:
             json.dump(profile, f, indent=2, ensure_ascii=False)
@@ -352,56 +650,22 @@ def saveGitAccountCredentials(
     except Exception as exc:
         return False, f"Could not write .git-account.json: {exc}"
 
-    pat = (pat or "").strip()
-    if not pat:
-        return True, "Saved profile (PAT unchanged)."
+    notes = ["Saved profile."]
+    if pat:
+        ok, msg = _writePatFile(os.path.join(repo_root, ".git-account.pat"), pat)
+        if not ok:
+            return False, msg
+        notes.append(msg)
 
-    import tempfile
+    if apply_to_repo and os.path.isdir(os.path.join(repo_root, ".git")):
+        ok, msg = applyGitAccountToRepo(repo_root, profile)
+        if ok:
+            if msg and msg != "Nothing to apply.":
+                notes.append(msg)
+        else:
+            notes.append(f"Git apply warning: {msg}")
 
-    tmp_path = None
-    try:
-        fd, tmp_path = tempfile.mkstemp(prefix="tcc-pat-", suffix=".txt")
-        os.close(fd)
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            f.write(pat)
-        tmp_ps = tmp_path.replace("'", "''")
-        pat_ps = pat_path.replace("'", "''")
-        ps = (
-            "$ErrorActionPreference='Stop';"
-            f"$plain = (Get-Content -LiteralPath '{tmp_ps}' -Raw -Encoding UTF8).Trim();"
-            "if (-not $plain) { throw 'Empty PAT' };"
-            "$secure = ConvertTo-SecureString -String $plain -AsPlainText -Force;"
-            "$enc = ConvertFrom-SecureString -SecureString $secure;"
-            f"Set-Content -LiteralPath '{pat_ps}' -Value $enc -Encoding UTF8 -NoNewline;"
-        )
-        completed = subprocess.run(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-WindowStyle",
-                "Hidden",
-                "-Command",
-                ps,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-            **_hiddenSubprocessKwargs(),
-        )
-        if completed.returncode != 0:
-            err = (completed.stderr or completed.stdout or "encrypt failed").strip()
-            return False, f"Could not encrypt PAT: {err[:300]}"
-        return True, "Saved profile and encrypted PAT."
-    except Exception as exc:
-        return False, str(exc)
-    finally:
-        if tmp_path:
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
+    return True, " ".join(notes)
 
 
 # ------------------------------------------------------------
@@ -521,9 +785,15 @@ def backupConfigAndUpload(
     state: Dict[str, Any],
     project_root: Optional[str] = None,
     upload: bool = True,
+    library_snapshot: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
     try:
-        backup_dir = writeConfigBackup(settings, state, project_root=project_root)
+        backup_dir = writeConfigBackup(
+            settings,
+            state,
+            project_root=project_root,
+            library_snapshot=library_snapshot,
+        )
     except Exception as exc:
         print(f"[ConfigBackup] Write failed: {exc}")
         return None
