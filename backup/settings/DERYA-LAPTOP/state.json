@@ -155,8 +155,10 @@
             "combine_and": true
         },
         "column_widths": {
-            "name": 77,
-            "date_modified": 97
+            "name": 164,
+            "size": 66,
+            "type": 59,
+            "date_modified": 99
         },
         "column_width_locked": {
             "name": false,
