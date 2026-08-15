@@ -1,5 +1,25 @@
 {
+    "format": "total-commander-clone-library-catalog",
+    "format_version": 1,
     "libraries": [],
-    "folder_tags": {},
-    "saved_library_filters": []
+    "fields": [
+        {
+            "id": "notes",
+            "key": "notes",
+            "name": "Notes",
+            "type": "text",
+            "is_builtin": true,
+            "options": []
+        },
+        {
+            "id": "tags",
+            "key": "tags",
+            "name": "Tags",
+            "type": "multi_choice",
+            "is_builtin": true,
+            "options": []
+        }
+    ],
+    "metadata_items": [],
+    "inherit_rules": []
 }
