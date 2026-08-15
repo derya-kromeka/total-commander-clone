@@ -11,6 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.5.0] - 2026-08-15
+
+### Added
+
+- **Responsive layout**: Toolbar, F-key bar, center labels, file-pane nav, transfers bar, and library headers compact at narrow widths and restore when space returns. Unlocked table columns reflow with the pane; locked widths stay fixed.
+- **Light theme**: Catppuccin Latte QSS matching the dark objectNames; system mode keeps native colors with a structural overlay for active-pane rings and dialog roles.
+- Shared dialog helpers: scrollable bodies, section/hint labels, comparison grid, and accessibility names on high-use dialogs.
+
+### Changed
+
+- Toolbar uses standard/themed icons instead of emoji labels. Libraries sidebar sections are user-resizable and remembered. Dialogs scale with font size and interface density instead of fixed pixel sizes.
+
+### Fixed
+
+- Batch rename preview colors follow the active theme. Filter size/date fields disable until their checkboxes are on. Git credentials show a validation message and a token show/hide control.
+
 ## [0.4.67] - 2026-08-11
 
 ### Fixed

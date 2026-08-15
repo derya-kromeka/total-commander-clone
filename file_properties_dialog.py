@@ -28,13 +28,18 @@ from PyQt5.QtWidgets import (
     QSizePolicy,
 )
 from PyQt5.QtCore import QFileInfo, QMimeDatabase, Qt
-from PyQt5.QtGui import QFont
 
 from file_panel import formatFileSize
 from folder_stats import (
     FolderSizeWorker,
     folderImmediateItemCount,
     folderTreeStats as _folder_tree_stats,
+)
+from ui_helpers import (
+    configureDialog,
+    hintLabel,
+    selectablePathLabel,
+    setAccessible,
 )
 
 
@@ -160,8 +165,8 @@ class FilePropertiesDialog(QDialog):
         self._folder_size_worker = None
         self._size_label = None
         self.setWindowTitle(f"Properties — {entry['name']}")
-        self.setMinimumSize(520, 440)
-        self.resize(560, 480)
+        configureDialog(self, self.windowTitle(), min_h=440)
+        self.setMinimumWidth(420)
 
         layout = QVBoxLayout(self)
         tabs = QTabWidget()
@@ -173,6 +178,7 @@ class FilePropertiesDialog(QDialog):
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(self.reject)
+        buttons.accepted.connect(self.accept)
         layout.addWidget(buttons)
 
         if entry.get("is_dir"):
@@ -322,6 +328,7 @@ class FilePropertiesDialog(QDialog):
         w = QWidget()
         v = QVBoxLayout(w)
         table = QTableWidget()
+        table.setObjectName("propertiesTable")
         table.setColumnCount(2)
         table.setHorizontalHeaderLabels(["Property", "Value"])
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -387,19 +394,15 @@ class FilePropertiesDialog(QDialog):
     def _buildChecksumsTab(self):
         w = QWidget()
         v = QVBoxLayout(w)
-        hint = QLabel(
+        hint = hintLabel(
             "Computes a cryptographic hash of the file contents. "
             "Large files may take a while; the UI may freeze until finished."
         )
-        hint.setWordWrap(True)
         v.addWidget(hint)
 
         self._hash_output = QPlainTextEdit()
         self._hash_output.setReadOnly(True)
-        font = QFont("Consolas", 10)
-        if not font.exactMatch():
-            font = QFont("Courier", 10)
-        self._hash_output.setFont(font)
+        self._hash_output.setObjectName("monospaceOutput")
         self._hash_output.setPlaceholderText("Hash results appear here.")
         self._hash_output.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         v.addWidget(self._hash_output, 1)

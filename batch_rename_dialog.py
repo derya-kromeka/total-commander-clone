@@ -12,10 +12,18 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QLineEdit, QCheckBox, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QGroupBox, QMessageBox,
-    QComboBox, QAbstractItemView, QFrame,
+    QComboBox, QAbstractItemView, QFrame, QWidget,
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
+
+from ui_helpers import (
+    configureDialog,
+    markAccentButton,
+    previewItemColor,
+    sectionLabel,
+    addScrollableBody,
+    setAccessible,
+)
 
 
 # ============================================================
@@ -39,8 +47,7 @@ class BatchRenameDialog(QDialog):
         self._current_dir = current_dir
         self._renamed_count = 0
 
-        self.setWindowTitle("Batch Rename")
-        self.setMinimumSize(750, 550)
+        configureDialog(self, "Batch Rename", wide=True, min_h=480)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
 
         self._initUI()
@@ -63,6 +70,7 @@ class BatchRenameDialog(QDialog):
         self._find_edit = QLineEdit()
         self._find_edit.setPlaceholderText('e.g.  _  or  \\d+  (regex)')
         find_layout.addWidget(self._find_edit, 0, 1)
+        setAccessible(self._find_edit, "Find text")
 
         find_layout.addWidget(QLabel("Replace:"), 1, 0)
         self._replace_edit = QLineEdit()
@@ -74,6 +82,7 @@ class BatchRenameDialog(QDialog):
         self._chk_regex.setToolTip("Treat Find pattern as a regular expression")
         self._chk_case = QCheckBox("Case sensitive")
         self._chk_case.setChecked(True)
+        self._chk_case.setToolTip("Match letter case when finding text")
         self._chk_ext = QCheckBox("Include extension")
         self._chk_ext.setToolTip("Apply find/replace to the file extension too")
         options_layout.addWidget(self._chk_regex)
@@ -102,9 +111,7 @@ class BatchRenameDialog(QDialog):
         layout.addWidget(affix_group)
 
         # --- Preview table ---
-        preview_label = QLabel("Preview:")
-        preview_label.setStyleSheet("font-weight: bold;")
-        layout.addWidget(preview_label)
+        layout.addWidget(sectionLabel("Preview:"))
 
         self._preview_table = QTableWidget()
         self._preview_table.setObjectName("batchPreview")
@@ -128,7 +135,7 @@ class BatchRenameDialog(QDialog):
         bottom_layout.addStretch()
 
         self._btn_apply = QPushButton("Apply Rename")
-        self._btn_apply.setObjectName("accentButton")
+        markAccentButton(self._btn_apply)
         self._btn_apply.setMinimumWidth(130)
         self._btn_apply.clicked.connect(self._onApply)
         bottom_layout.addWidget(self._btn_apply)
@@ -235,9 +242,7 @@ class BatchRenameDialog(QDialog):
             is_changed = (new_name != original)
             if is_changed:
                 changed_count += 1
-                new_item.setForeground(QColor("#a6e3a1"))
-            else:
-                new_item.setForeground(QColor("#6c7086"))
+            new_item.setForeground(previewItemColor(is_changed))
 
             self._preview_table.setItem(row, 0, orig_item)
             self._preview_table.setItem(row, 1, new_item)

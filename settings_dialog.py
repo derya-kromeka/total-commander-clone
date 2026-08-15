@@ -18,10 +18,18 @@ from PyQt5.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QGroupBox,
+    QWidget,
 )
 from PyQt5.QtCore import pyqtSignal
 
 from theme import UI_SCALE_PRESETS, normalize_ui_scale, ui_scale_label
+from ui_helpers import (
+    accentButtonFromBox,
+    addScrollableBody,
+    configureDialog,
+    hintLabel,
+    setAccessible,
+)
 
 
 class SettingsDialog(QDialog):
@@ -31,19 +39,21 @@ class SettingsDialog(QDialog):
     def __init__(self, settings_manager, parent=None):
         super().__init__(parent)
         self._settings = settings_manager
-        self.setWindowTitle("Settings")
+        configureDialog(self, "Settings", min_h=480)
         self.setModal(True)
-        self.resize(560, 480)
 
         layout = QVBoxLayout(self)
-        form = QFormLayout()
+        body = QWidget(self)
+        form = QFormLayout(body)
         form.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 
         self._theme_mode = QComboBox(self)
         self._theme_mode.addItem("Dark", "dark")
         self._theme_mode.addItem("Light", "light")
         self._theme_mode.addItem("Same as system", "system")
-        form.addRow("Theme", self._theme_mode)
+        theme_label = QLabel("Theme")
+        form.addRow(theme_label, self._theme_mode)
+        setAccessible(self._theme_mode, "Theme", "Dark, Light, or match the operating system.", theme_label)
 
         self._font_size = QSpinBox(self)
         self._font_size.setRange(8, 24)
@@ -52,27 +62,32 @@ class SettingsDialog(QDialog):
             "Text and layout scale together.\n"
             "10 pt = 100% (default). Larger sizes grow row height, icons, and controls."
         )
-        form.addRow("Font size (10 = 100%)", self._font_size)
-        font_hint = QLabel(
+        font_label = QLabel("Font size (10 = 100%)")
+        form.addRow(font_label, self._font_size)
+        setAccessible(self._font_size, "Font size", "Point size used for text and layout scale.", font_label)
+        form.addRow("", hintLabel(
             "Scales text with row height, file-list icons, and control sizes so "
             "filenames stay readable. 10 pt is the default (100%).",
             self,
-        )
-        font_hint.setWordWrap(True)
-        form.addRow("", font_hint)
+        ))
 
         self._ui_scale = QComboBox(self)
         for pct in UI_SCALE_PRESETS:
             self._ui_scale.addItem(ui_scale_label(pct), pct)
-        form.addRow("Interface density", self._ui_scale)
-        density_hint = QLabel(
+        density_label = QLabel("Interface density")
+        form.addRow(density_label, self._ui_scale)
+        setAccessible(
+            self._ui_scale,
+            "Interface density",
+            "Extra spacing on top of font size. Ctrl+mouse wheel also steps density.",
+            density_label,
+        )
+        form.addRow("", hintLabel(
             "Extra spacing tweak on top of font size. "
             "Extra compact / Very compact fit small screens; Comfortable for touch or large monitors. "
             "Ctrl+mouse wheel also steps density.",
             self,
-        )
-        density_hint.setWordWrap(True)
-        form.addRow("", density_hint)
+        ))
 
         self._show_hidden = QCheckBox("Show hidden files", self)
         form.addRow("Files", self._show_hidden)
@@ -102,9 +117,11 @@ class SettingsDialog(QDialog):
 
         self._default_left_path = QLineEdit(self)
         form.addRow("Default left path", self._default_left_path)
+        setAccessible(self._default_left_path, "Default left path")
 
         self._default_right_path = QLineEdit(self)
         form.addRow("Default right path", self._default_right_path)
+        setAccessible(self._default_right_path, "Default right path")
 
         self._mirror_mode = QComboBox(self)
         self._mirror_mode.addItem(
@@ -117,17 +134,15 @@ class SettingsDialog(QDialog):
         )
         form.addRow("Mirror (Ctrl+Shift+M)", self._mirror_mode)
 
-        layout.addLayout(form)
+        addScrollableBody(layout, body)
 
         profile_box = QGroupBox("Profile (settings, bookmarks, libraries)", self)
         profile_layout = QVBoxLayout(profile_box)
-        profile_hint = QLabel(
+        profile_layout.addWidget(hintLabel(
             "Export saves one file with preferences, bookmarks, libraries, tags, "
             "and saved filters. Import replaces those from a previously exported file.",
             self,
-        )
-        profile_hint.setWordWrap(True)
-        profile_layout.addWidget(profile_hint)
+        ))
         profile_buttons = QHBoxLayout()
         self._btn_export = QPushButton("Export…", self)
         self._btn_import = QPushButton("Import…", self)
@@ -150,6 +165,7 @@ class SettingsDialog(QDialog):
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
+        accentButtonFromBox(buttons, QDialogButtonBox.Ok)
         layout.addWidget(buttons)
 
         self._loadFromSettings()

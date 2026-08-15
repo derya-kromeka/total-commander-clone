@@ -250,7 +250,7 @@ class BookmarksPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         title = QLabel("Bookmarks")
-        title.setStyleSheet("font-weight: bold; font-size: 12px;")
+        title.setObjectName("sidebarPanelTitle")
         layout.addWidget(title)
 
         btn_row = QHBoxLayout()

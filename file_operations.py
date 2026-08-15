@@ -11,11 +11,19 @@ from datetime import datetime
 
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar,
-    QPushButton, QMessageBox, QApplication, QCheckBox, QGridLayout,
+    QPushButton, QMessageBox, QApplication, QCheckBox, QWidget,
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QMutex, QWaitCondition
 
 from folder_stats import FolderSizeWorker, folderTreeStats
+from ui_helpers import (
+    addScrollableBody,
+    buildPathComparisonGrid,
+    configureDialog,
+    hintLabel,
+    markAccentButton,
+    sectionLabel,
+)
 
 
 # Conflict resolution choices (used between worker and main thread)
@@ -267,56 +275,44 @@ class ConflictDialog(QDialog):
         self.setWindowTitle(
             "Item Already Exists" if either_dir else "File Already Exists"
         )
-        self.resize(820, 460)
+        configureDialog(self, self.windowTitle(), wide=True, min_h=420)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
+        body = QWidget(self)
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
 
         name = os.path.basename(dst["path"] or self._dest_path) or os.path.basename(
             src["path"] or self._source_path
         )
         op = (operation_name or "Copy").strip() or "Copy"
-        intro = QLabel(
-            f"{op}: \"{name}\" already exists at the destination.\n"
+        body_layout.addWidget(hintLabel(
+            f"{op}: \"{name}\" already exists at the destination. "
             "Compare source and destination below, then choose what to do."
+        ))
+
+        built = buildPathComparisonGrid(
+            "Source (incoming)",
+            "Destination (existing)",
+            [
+                ("Path", "path"),
+                ("Type", "type"),
+                ("Modified", "mod"),
+                ("Size", "size"),
+                ("Contents", "contents"),
+            ],
+            self,
         )
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
-
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(16)
-        grid.setVerticalSpacing(6)
-
-        grid.addWidget(self._boldLabel("Source (incoming)"), 0, 1)
-        grid.addWidget(self._boldLabel("Destination (existing)"), 0, 2)
-
-        self._src_labels = {}
-        self._dst_labels = {}
-        fields = [
-            ("Path", "path"),
-            ("Type", "type"),
-            ("Modified", "mod"),
-            ("Size", "size"),
-            ("Contents", "contents"),
-        ]
-        for row, (title, key) in enumerate(fields, start=1):
-            grid.addWidget(QLabel(title), row, 0, Qt.AlignTop)
-            left = QLabel()
-            left.setWordWrap(True)
-            left.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            right = QLabel()
-            right.setWordWrap(True)
-            right.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            grid.addWidget(left, row, 1, Qt.AlignTop)
-            grid.addWidget(right, row, 2, Qt.AlignTop)
-            self._src_labels[key] = left
-            self._dst_labels[key] = right
-
-        layout.addLayout(grid)
+        self._src_labels = built["left_labels"]
+        self._dst_labels = built["right_labels"]
+        body_layout.addLayout(built["grid"])
 
         self._diff_label = QLabel()
         self._diff_label.setWordWrap(True)
-        layout.addWidget(self._diff_label)
+        self._diff_label.setObjectName("compareDiffSummary")
+        body_layout.addWidget(self._diff_label)
+        addScrollableBody(layout, body)
 
         self._chk_apply_all = QCheckBox("Do this for all remaining conflicts")
         layout.addWidget(self._chk_apply_all)
@@ -349,6 +345,7 @@ class ConflictDialog(QDialog):
         self._btn_overwrite.setToolTip(
             "Replace the destination with the source."
         )
+        markAccentButton(self._btn_overwrite)
         self._btn_overwrite.clicked.connect(self._onOverwrite)
         btn_layout.addWidget(self._btn_overwrite)
 
@@ -1060,14 +1057,13 @@ class FileOperationDialog(QDialog):
             "delete": "Deleting Files",
         }
         self.setWindowTitle(op_titles.get(self._operation, "File Operation"))
-        self.setMinimumWidth(450)
+        configureDialog(self, self.windowTitle(), min_w=450, min_h=180)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        self._title_label = QLabel(f"{op_titles.get(self._operation, 'Processing')}...")
-        self._title_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        self._title_label = sectionLabel(f"{op_titles.get(self._operation, 'Processing')}...")
         layout.addWidget(self._title_label)
 
         self._file_label = QLabel("Preparing...")

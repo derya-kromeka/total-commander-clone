@@ -7,8 +7,9 @@ import os
 
 from PyQt5.QtWidgets import (
     QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout,
-    QLineEdit, QPushButton, QVBoxLayout,
+    QLineEdit, QPushButton, QVBoxLayout, QWidget,
 )
+from ui_helpers import configureDialog, setAccessible
 
 
 # ------------------------------------------------------------
@@ -22,20 +23,23 @@ class BookmarkEditDialog(QDialog):
     # --------------------------------------------------------
     def __init__(self, name="", path="", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Edit Bookmark")
-        self.setMinimumWidth(480)
+        configureDialog(self, "Edit Bookmark", min_w=480)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
         self._name = QLineEdit(name)
         form.addRow("Name:", self._name)
+        setAccessible(self._name, "Bookmark name")
 
         path_row = QHBoxLayout()
         self._path = QLineEdit(path)
-        browse_folder_btn = QPushButton("Browse folder...")
+        setAccessible(self._path, "Bookmark path")
+        browse_folder_btn = QPushButton("Folder…")
+        browse_folder_btn.setToolTip("Choose a folder path.")
         browse_folder_btn.clicked.connect(self._browseForFolder)
-        browse_file_btn = QPushButton("Browse file...")
+        browse_file_btn = QPushButton("File…")
+        browse_file_btn.setToolTip("Choose a file path.")
         browse_file_btn.clicked.connect(self._browseForFile)
         path_row.addWidget(self._path, 1)
         path_row.addWidget(browse_folder_btn)

@@ -9,6 +9,10 @@ from PyQt5.QtWidgets import (
     QPushButton, QDialog, QScrollArea, QWidget, QSizePolicy,
 )
 from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QFontMetrics
+
+from ui_layout_policy import LayoutTier, tierAtMost
+from ui_helpers import configureDialog, hintLabel
 
 from file_operation_queue import (
     FileOperationQueue,
@@ -69,12 +73,15 @@ class TransfersBar(QFrame):
         self._summary_label = QLabel("Transferring...")
         self._summary_label.setObjectName("transfersSummary")
         self._summary_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self._summary_full_text = ""
         layout.addWidget(self._summary_label, 1)
 
         self._progress = QProgressBar()
         self._progress.setObjectName("transfersProgress")
         self._progress.setRange(0, 100)
-        self._progress.setFixedWidth(160)
+        self._progress.setMinimumWidth(80)
+        self._progress.setMaximumWidth(220)
+        self._progress.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self._progress.setTextVisible(False)
         layout.addWidget(self._progress)
 
@@ -84,6 +91,23 @@ class TransfersBar(QFrame):
         layout.addWidget(self._cancel_btn)
 
         self.setCursor(Qt.PointingHandCursor)
+
+    def applyLayoutTier(self, tier, metrics=None):
+        compact = tierAtMost(tier, LayoutTier.NARROW)
+        min_w = 64
+        max_w = 160
+        if metrics:
+            min_w = int(metrics.get("transfers_progress_min", min_w))
+            max_w = int(metrics.get("transfers_progress_max", max_w))
+        if compact:
+            self._progress.setMinimumWidth(max(48, min_w // 2))
+            self._progress.setMaximumWidth(max(90, min_w + 20))
+            self._cancel_btn.setText("X" if tier == LayoutTier.CRITICAL else "Cancel")
+        else:
+            self._progress.setMinimumWidth(min_w)
+            self._progress.setMaximumWidth(max_w)
+            self._cancel_btn.setText("Cancel")
+        self._elideSummary()
 
     def cancelButton(self):
         return self._cancel_btn
@@ -102,13 +126,28 @@ class TransfersBar(QFrame):
             detail = active.detail or ""
             extra = f"  ·  +{pending} waiting" if pending else ""
             text = f"{verb}  {detail}  ·  {name}{extra}" if detail else f"{verb}  {name}{extra}"
-            self._summary_label.setText(text.strip())
+            self._setSummary(text.strip())
             self._progress.setValue(active.progress)
             self._cancel_btn.setEnabled(active.status == STATUS_RUNNING)
         else:
-            self._summary_label.setText(f"{pending} transfer(s) queued")
+            self._setSummary(f"{pending} transfer(s) queued")
             self._progress.setValue(0)
             self._cancel_btn.setEnabled(False)
+
+    def _setSummary(self, text):
+        self._summary_full_text = text
+        self._elideSummary()
+
+    def _elideSummary(self):
+        text = getattr(self, "_summary_full_text", "") or self._summary_label.text()
+        self._summary_label.setToolTip(text)
+        metrics = QFontMetrics(self._summary_label.font())
+        width = max(40, self._summary_label.width() - 8)
+        self._summary_label.setText(metrics.elidedText(text, Qt.ElideMiddle, width))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._elideSummary()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -166,9 +205,22 @@ class _TaskRowWidget(QFrame):
     def updateTask(self, task: FileOperationTask):
         self._summary.setText(task.summaryLabel())
         self._status.setText(_statusText(task.status))
+        state = {
+            STATUS_RUNNING: "running",
+            STATUS_COMPLETED: "done",
+            STATUS_FAILED: "failed",
+            STATUS_PENDING: "queued",
+            STATUS_CANCELLED: "failed",
+        }.get(task.status, "queued")
+        self._status.setProperty("taskState", state)
+        style = self._status.style()
+        if style is not None:
+            style.unpolish(self._status)
+            style.polish(self._status)
         can_cancel = task.status in (STATUS_PENDING, STATUS_RUNNING)
         self._cancel_btn.setVisible(can_cancel)
         self._cancel_btn.setEnabled(can_cancel)
+        self._cancel_btn.setAccessibleName(f"Cancel transfer {task.summaryLabel()}")
 
         if task.status == STATUS_RUNNING:
             self._file_label.setText(
@@ -200,14 +252,16 @@ class TransfersDetailsDialog(QDialog):
         self.setWindowFlags(
             self.windowFlags() & ~Qt.WindowContextHelpButtonHint
         )
-        self.setMinimumWidth(520)
-        self.setMinimumHeight(280)
+        configureDialog(self, "File Transfers", min_w=520, min_h=280)
         self._initUI()
         self._rebuildRows()
 
     def _initUI(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
+        layout.addWidget(hintLabel(
+            "Closing this window does not cancel transfers. They continue in the background."
+        ))
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)

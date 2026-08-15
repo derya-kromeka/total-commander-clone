@@ -21,10 +21,19 @@ from PyQt5.QtWidgets import (
     QDateTimeEdit,
     QMessageBox,
     QInputDialog,
+    QWidget,
 )
 from PyQt5.QtCore import QDateTime
 
 from filter_spec import FilterSpec
+from ui_helpers import (
+    accentButtonFromBox,
+    addScrollableBody,
+    configureDialog,
+    hintLabel,
+    markDestructiveButton,
+    setAccessible,
+)
 
 
 def _dt_to_ts(qdt):
@@ -58,11 +67,13 @@ class FilterOptionsDialog(QDialog):
         super().__init__(parent)
         self._file_panel = file_panel
         self._settings = settings_manager
-        self.setWindowTitle("Filter options")
+        configureDialog(self, "Filter options", min_h=520)
         self.setModal(True)
-        self.resize(560, 640)
 
         root = QVBoxLayout(self)
+        body = QWidget(self)
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
 
         # --- Name filter (toolbar mirror) ---
         name_box = QGroupBox("Name filter (toolbar)", self)
@@ -127,7 +138,7 @@ class FilterOptionsDialog(QDialog):
         )
         name_form.addRow("Search scope", self._chk_subfolders)
         name_box.setLayout(name_form)
-        root.addWidget(name_box)
+        body_layout.addWidget(name_box)
 
         # --- Advanced: size + date ---
         adv_box = QGroupBox("Size and date (advanced)", self)
@@ -175,9 +186,9 @@ class FilterOptionsDialog(QDialog):
         combine_row.addStretch()
         adv_layout.addLayout(combine_row)
         adv_box.setLayout(adv_layout)
-        root.addWidget(adv_box)
+        body_layout.addWidget(adv_box)
 
-        root.addWidget(QLabel(
+        body_layout.addWidget(hintLabel(
             "Include, exclude, and extension rules apply together with the advanced "
             "size/date block (name AND advanced). Exclude removes matches even when "
             "include terms match.",
@@ -197,7 +208,8 @@ class FilterOptionsDialog(QDialog):
         preset_layout.addWidget(self._btn_preset_save)
         preset_layout.addWidget(self._btn_preset_delete)
         preset_box.setLayout(preset_layout)
-        root.addWidget(preset_box)
+        body_layout.addWidget(preset_box)
+        addScrollableBody(root, body)
 
         self._btn_preset_load.clicked.connect(self._onPresetLoad)
         self._btn_preset_save.clicked.connect(self._onPresetSave)
@@ -209,6 +221,7 @@ class FilterOptionsDialog(QDialog):
         self._btn_clear.setToolTip(
             "Reset name, match mode, show, subfolders, and size/date to defaults."
         )
+        markDestructiveButton(self._btn_clear)
         bbox.addWidget(self._btn_clear)
         bbox.addStretch()
         buttons = QDialogButtonBox(
@@ -218,13 +231,20 @@ class FilterOptionsDialog(QDialog):
         buttons.button(QDialogButtonBox.Apply).clicked.connect(self._onApply)
         buttons.accepted.connect(self._onOk)
         buttons.rejected.connect(self.reject)
+        accentButtonFromBox(buttons, QDialogButtonBox.Ok)
         bbox.addWidget(buttons)
         root.addLayout(bbox)
 
         self._btn_clear.clicked.connect(self._onClearClicked)
+        self._chk_size.toggled.connect(self._syncAdvancedEnabled)
+        self._chk_date.toggled.connect(self._syncAdvancedEnabled)
 
         self._reloadPresetCombo()
         self._load_from_panel()
+        self._syncAdvancedEnabled()
+        setAccessible(self._filter_text, "Include filter", "Words to find in file or folder names.")
+        setAccessible(self._filter_exclude, "Exclude filter")
+        setAccessible(self._filter_extensions, "File extensions")
 
     def _reloadPresetCombo(self):
         self._preset_combo.blockSignals(True)
@@ -275,6 +295,15 @@ class FilterOptionsDialog(QDialog):
             self._dt_before.setDateTime(QDateTime.currentDateTime().addYears(10))
         self._rb_and.setChecked(spec.combine_and)
         self._rb_or.setChecked(not spec.combine_and)
+        self._syncAdvancedEnabled()
+
+    def _syncAdvancedEnabled(self):
+        size_on = self._chk_size.isChecked()
+        date_on = self._chk_date.isChecked()
+        self._spin_min_mb.setEnabled(size_on)
+        self._spin_max_mb.setEnabled(size_on)
+        self._dt_after.setEnabled(date_on)
+        self._dt_before.setEnabled(date_on)
 
     def _gather_spec(self):
         spec = FilterSpec()

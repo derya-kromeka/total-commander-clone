@@ -35,6 +35,13 @@ from app_version import APP_VERSION, APP_NAME, getWindowTitle
 from file_properties_dialog import showFileProperties
 from settings_dialog import SettingsDialog
 from theme import applyTheme, getUiMetrics, normalize_ui_scale, step_ui_scale, ui_scale_label
+from ui_layout_policy import (
+    HeightTier,
+    LayoutTier,
+    layoutTierForHeight,
+    layoutTierForWindow,
+    tierAtMost,
+)
 from app_updater import (
     checkRemoteAppVersion,
     getPublishPreview,
@@ -189,6 +196,12 @@ class FileManagerApp(QMainWindow):
         self._publish_pending_result = None
         self._configureScanCache()
         self._show_home_path()
+        self._layout_apply_timer = QTimer(self)
+        self._layout_apply_timer.setSingleShot(True)
+        self._layout_apply_timer.setInterval(50)
+        self._layout_apply_timer.timeout.connect(self._applyResponsiveLayout)
+        self._window_layout_tier = LayoutTier.COMFORTABLE
+        self._height_tier = HeightTier.NORMAL
 
     # --------------------------------------------------------
     # Method: _configureScanCache
@@ -293,6 +306,7 @@ class FileManagerApp(QMainWindow):
         self._applyUiMetrics()
         self._left_panel.relayoutColumns()
         self._right_panel.relayoutColumns()
+        self._applyResponsiveLayout()
 
     # --------------------------------------------------------
     # Method: _initWindow
@@ -539,11 +553,22 @@ class FileManagerApp(QMainWindow):
     def _initToolBar(self):
         self._toolbar = QToolBar("Main Toolbar", self)
         self._toolbar.setMovable(False)
+        self._toolbar.setFloatable(False)
         self.addToolBar(self._toolbar)
         style = QApplication.instance().style()
         toolbar = self._toolbar
 
-        self._tb_copy = QAction("\U0001F4CB Copy (F6)", self)
+        def _icon(*theme_names, standard=None):
+            for name in theme_names:
+                icon = QIcon.fromTheme(name)
+                if icon is not None and not icon.isNull():
+                    return icon
+            if standard is not None:
+                return style.standardIcon(standard)
+            return QIcon()
+
+        self._tb_copy = QAction("Copy", self)
+        self._tb_copy.setIcon(_icon("edit-copy", "document-copy", standard=QStyle.SP_FileDialogContentsView))
         self._tb_copy.setToolTip(
             "Copy to other panel\n\n"
             "Copy selected items to the opposite panel. Shortcut: F6."
@@ -551,7 +576,8 @@ class FileManagerApp(QMainWindow):
         self._tb_copy.triggered.connect(self._onCopyToOther)
         toolbar.addAction(self._tb_copy)
 
-        self._tb_move = QAction("\U0001F4E6 Move (F7)", self)
+        self._tb_move = QAction("Move", self)
+        self._tb_move.setIcon(_icon("go-jump", "document-send", standard=QStyle.SP_ArrowForward))
         self._tb_move.setToolTip(
             "Move to other panel\n\n"
             "Move selected items to the opposite panel. Shortcut: F7."
@@ -559,7 +585,8 @@ class FileManagerApp(QMainWindow):
         self._tb_move.triggered.connect(self._onMoveToOther)
         toolbar.addAction(self._tb_move)
 
-        self._tb_delete = QAction("\U0001F5D1 Delete (F9)", self)
+        self._tb_delete = QAction("Delete", self)
+        self._tb_delete.setIcon(_icon("edit-delete", standard=QStyle.SP_TrashIcon))
         self._tb_delete.setToolTip(
             "Delete\n\nDelete selected items. Shortcut: F9."
         )
@@ -568,21 +595,24 @@ class FileManagerApp(QMainWindow):
 
         toolbar.addSeparator()
 
-        self._tb_new_folder = QAction("\U0001F4C1 New Folder (F8)", self)
+        self._tb_new_folder = QAction("New Folder", self)
+        self._tb_new_folder.setIcon(_icon("folder-new", standard=QStyle.SP_FileDialogNewFolder))
         self._tb_new_folder.setToolTip(
             "New folder\n\nCreate a folder in the active panel. Shortcut: F8."
         )
         self._tb_new_folder.triggered.connect(self._onNewFolder)
         toolbar.addAction(self._tb_new_folder)
 
-        self._tb_rename = QAction("\u270F Rename (F2)", self)
+        self._tb_rename = QAction("Rename", self)
+        self._tb_rename.setIcon(_icon("edit-rename", standard=QStyle.SP_FileDialogDetailedView))
         self._tb_rename.setToolTip(
             "Rename\n\nRename the selected item. Shortcut: F2."
         )
         self._tb_rename.triggered.connect(self._onRename)
         toolbar.addAction(self._tb_rename)
 
-        self._tb_batch_rename = QAction("\U0001F504 Batch Rename", self)
+        self._tb_batch_rename = QAction("Batch Rename", self)
+        self._tb_batch_rename.setIcon(_icon("edit-find-replace", standard=QStyle.SP_FileDialogListView))
         self._tb_batch_rename.setToolTip(
             "Batch rename\n\n"
             "Rename multiple files in the current folder. Shortcut: Ctrl+M."
@@ -592,7 +622,8 @@ class FileManagerApp(QMainWindow):
 
         toolbar.addSeparator()
 
-        self._tb_bookmark = QAction("\u2B50 Bookmark", self)
+        self._tb_bookmark = QAction("Bookmark", self)
+        self._tb_bookmark.setIcon(_icon("bookmark-new", standard=QStyle.SP_DirLinkIcon))
         self._tb_bookmark.setToolTip(
             "Bookmark folder\n\n"
             "Save the active panel’s path as a bookmark. Shortcut: Ctrl+Shift+B."
@@ -609,7 +640,8 @@ class FileManagerApp(QMainWindow):
         self._tb_open_explorer.triggered.connect(self._onOpenActivePathInExplorer)
         toolbar.addAction(self._tb_open_explorer)
 
-        self._tb_refresh = QAction("\U0001F504 Refresh", self)
+        self._tb_refresh = QAction("Refresh", self)
+        self._tb_refresh.setIcon(_icon("view-refresh", standard=QStyle.SP_BrowserReload))
         self._tb_refresh.setToolTip(
             "Refresh both panels\n\n"
             "Reload both panels. F5 refreshes only the active panel."
@@ -619,7 +651,8 @@ class FileManagerApp(QMainWindow):
 
         toolbar.addSeparator()
 
-        self._tb_settings = QAction("\u2699 Settings", self)
+        self._tb_settings = QAction("Settings", self)
+        self._tb_settings.setIcon(_icon("preferences-system", standard=QStyle.SP_FileDialogInfoView))
         self._tb_settings.setToolTip(
             "Settings\n\n"
             "Theme, font size, interface density (Compact/Normal/Comfortable), and more. "
@@ -627,6 +660,7 @@ class FileManagerApp(QMainWindow):
         )
         self._tb_settings.triggered.connect(self._onOpenSettings)
         toolbar.addAction(self._tb_settings)
+        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
 
     # --------------------------------------------------------
     # Method: _applyUiMetrics
@@ -646,6 +680,7 @@ class FileManagerApp(QMainWindow):
             self._center_buttons.setFixedWidth(w)
         self._left_panel.applyUiMetrics(metrics)
         self._right_panel.applyUiMetrics(metrics)
+        self._applyResponsiveLayout()
 
     # --------------------------------------------------------
     # Method: _adjustUiScale
@@ -684,6 +719,101 @@ class FileManagerApp(QMainWindow):
                     if self._adjustUiScale(direction):
                         return True
         return super().eventFilter(obj, event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "_layout_apply_timer"):
+            self._layout_apply_timer.start()
+
+    # --------------------------------------------------------
+    # Method: _applyResponsiveLayout
+    # Purpose: Compact toolbar, F-keys, center labels, and pane
+    #          chrome from current window size and density.
+    # --------------------------------------------------------
+    def _applyResponsiveLayout(self):
+        if not hasattr(self, "_toolbar") or not hasattr(self, "_bottom_bar"):
+            return
+        font_size = int(self._settings.getSetting("font_size", 10))
+        ui_scale = normalize_ui_scale(self._settings.getSetting("ui_scale", 100))
+        metrics = getUiMetrics(font_size, ui_scale)
+        window_tier = layoutTierForWindow(self.width(), metrics)
+        height_tier = layoutTierForHeight(self.height(), metrics)
+        self._window_layout_tier = window_tier
+        self._height_tier = height_tier
+
+        if hasattr(self, "_toolbar"):
+            if tierAtMost(window_tier, LayoutTier.NARROW):
+                self._toolbar.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            else:
+                self._toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+
+        hide_center_labels = (
+            tierAtMost(window_tier, LayoutTier.NARROW)
+            or height_tier == HeightTier.SHORT
+        )
+        for attr in ("_lbl_copy", "_lbl_move", "_lbl_special", "_lbl_swap", "_lbl_mirror"):
+            label = getattr(self, attr, None)
+            if label is not None:
+                label.setVisible(not hide_center_labels)
+
+        if hasattr(self, "_bottom_buttons"):
+            compact = tierAtMost(window_tier, LayoutTier.NARROW)
+            for btn, full_text, short_text in self._bottom_buttons:
+                btn.setText(short_text if compact else full_text)
+
+        if hasattr(self, "_transfers_bar") and hasattr(self._transfers_bar, "applyLayoutTier"):
+            self._transfers_bar.applyLayoutTier(window_tier, metrics)
+
+        if hasattr(self, "_left_panel"):
+            self._left_panel._refreshLayoutTier()
+            self._right_panel._refreshLayoutTier()
+        if hasattr(self, "_left_library_browser") and hasattr(
+            self._left_library_browser, "applyLayoutTier"
+        ):
+            self._left_library_browser.applyLayoutTier(window_tier)
+            self._right_library_browser.applyLayoutTier(window_tier)
+        if hasattr(self, "_libraries_panel") and hasattr(
+            self._libraries_panel, "applyLayoutTier"
+        ):
+            self._libraries_panel.applyLayoutTier(window_tier)
+
+        self._updateActiveSideChrome()
+
+    def _updateActiveSideChrome(self):
+        if not hasattr(self, "_left_stack"):
+            return
+        left_active = self._active_panel == self._left_panel
+        self._left_stack.setObjectName(
+            "paneStackActive" if left_active else "paneStackInactive"
+        )
+        self._right_stack.setObjectName(
+            "paneStackActive" if not left_active else "paneStackInactive"
+        )
+        left_browser = getattr(self, "_left_library_browser", None)
+        right_browser = getattr(self, "_right_library_browser", None)
+        if left_browser is not None:
+            showing = self._left_stack.currentWidget() == left_browser
+            left_browser.setObjectName(
+                "libraryPanelActive" if left_active and showing else "libraryPanel"
+            )
+        if right_browser is not None:
+            showing = self._right_stack.currentWidget() == right_browser
+            right_browser.setObjectName(
+                "libraryPanelActive" if (not left_active) and showing else "libraryPanel"
+            )
+        style = self.style()
+        if style is not None:
+            for w in (
+                self._left_stack,
+                self._right_stack,
+                left_browser,
+                right_browser,
+            ):
+                if w is None:
+                    continue
+                style.unpolish(w)
+                style.polish(w)
+                w.update()
 
     # --------------------------------------------------------
     # Method: _initPanels
@@ -762,6 +892,9 @@ class FileManagerApp(QMainWindow):
         # Prevent sidebar from collapsing to zero; file area can shrink freely.
         self._main_splitter.setCollapsible(0, False)
         self._main_splitter.setCollapsible(1, True)
+        self._main_splitter.setStretchFactor(0, 0)
+        self._main_splitter.setStretchFactor(1, 1)
+        self._main_splitter.splitterMoved.connect(self._onMainSplitterMoved)
 
         bm_width = self._settings.getState("bookmarks_panel_width")
         if bm_width and isinstance(bm_width, (int, float)) and 180 <= bm_width <= 600:
@@ -816,6 +949,10 @@ class FileManagerApp(QMainWindow):
         )
 
         self._setActivePanel(self._left_panel)
+
+    def _onMainSplitterMoved(self, _pos, _index):
+        if hasattr(self, "_layout_apply_timer"):
+            self._layout_apply_timer.start()
 
     # --------------------------------------------------------
     # Method: _buildCenterButtons
@@ -1052,43 +1189,51 @@ class FileManagerApp(QMainWindow):
         button_defs = [
             (
                 "F2 Rename",
+                "F2",
                 self._onRename,
                 "Rename\n\nRename the selected item in the active panel. Shortcut: F2.",
             ),
             (
                 "F5 Refresh",
+                "F5",
                 self._onRefreshActivePanel,
                 "Refresh\n\nReload the listing for the active panel only. Shortcut: F5.",
             ),
             (
                 "F6 Copy",
+                "F6",
                 self._onCopyToOther,
                 "Copy\n\nCopy selected items to the opposite panel. Shortcut: F6.",
             ),
             (
                 "F7 Move",
+                "F7",
                 self._onMoveToOther,
                 "Move\n\nMove selected items to the opposite panel. Shortcut: F7.",
             ),
             (
                 "F8 NewFolder",
+                "F8",
                 self._onNewFolder,
                 "New folder\n\nCreate a folder in the active panel. Shortcut: F8.",
             ),
             (
                 "F9 Delete",
+                "F9",
                 self._onDelete,
                 "Delete\n\nDelete selected items. Shortcut: F9.",
             ),
         ]
 
-        for text, callback, tip in button_defs:
-            btn = QPushButton(text)
+        self._bottom_buttons = []
+        for full_text, short_text, callback, tip in button_defs:
+            btn = QPushButton(full_text)
             btn.setToolTip(tip)
             btn.clicked.connect(callback)
             btn.setFocusPolicy(Qt.NoFocus)
             btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
             layout.addWidget(btn)
+            self._bottom_buttons.append((btn, full_text, short_text))
         layout.addStretch(1)
 
         self.centralWidget().layout().addWidget(self._bottom_bar)
@@ -1189,6 +1334,15 @@ class FileManagerApp(QMainWindow):
         else:
             self._sidebar_tabs.setCurrentIndex(0)
 
+        lib_split = self._settings.getState("libraries_panel_split")
+        if hasattr(self._libraries_panel, "applySplitterSizes"):
+            self._libraries_panel.applySplitterSizes(lib_split)
+        left_split = self._settings.getState("left_library_browser_split")
+        right_split = self._settings.getState("right_library_browser_split")
+        if hasattr(self._left_library_browser, "applySplitterSizes"):
+            self._left_library_browser.applySplitterSizes(left_split)
+            self._right_library_browser.applySplitterSizes(right_split)
+
         QTimer.singleShot(200, self._deferredLibraryRefresh)
 
     # --------------------------------------------------------
@@ -1213,6 +1367,7 @@ class FileManagerApp(QMainWindow):
         self._updateStatusBar()
         if hasattr(self, "_btn_copy_dir"):
             self._updateDirectionButtons()
+        self._updateActiveSideChrome()
 
     def _getInactivePanel(self):
         if self._active_panel == self._left_panel:
@@ -2004,6 +2159,9 @@ class FileManagerApp(QMainWindow):
         browser.addLibraryRequested.connect(self._onAddCurrentFolderToLibrary)
         browser.scanLibrariesRequested.connect(self._onScanLibraries)
         browser.assignTagsRequested.connect(self._onAssignCurrentFolderTags)
+        if hasattr(browser, "activated"):
+            panel = self._left_panel if side == "left" else self._right_panel
+            browser.activated.connect(lambda p=panel: self._setActivePanel(p))
 
     def _onBrowserNavigateRequested(self, path, browser_side):
         if not path or not os.path.isdir(path):
@@ -2044,6 +2202,7 @@ class FileManagerApp(QMainWindow):
             self._reloadLibraryBrowser(side)
             stack.setCurrentWidget(browser)
             self._showStatus("Switched to library browser.")
+        self._updateActiveSideChrome()
 
     def _reloadLibraryBrowser(self, side):
         browser = self._left_library_browser if side == "left" else self._right_library_browser
@@ -2513,7 +2672,7 @@ class FileManagerApp(QMainWindow):
             f"Version {APP_VERSION}\n\n"
             "A modern dual-pane file manager.\n\n"
             "Built with Python + PyQt5\n"
-            "Dark theme inspired by Catppuccin Mocha"
+            "Themes inspired by Catppuccin Mocha (dark) and Latte (light)."
         )
 
     # --------------------------------------------------------
@@ -2851,6 +3010,15 @@ class FileManagerApp(QMainWindow):
         self._settings.setSidebarState({
             "current_tab": current_tab,
         })
+        if hasattr(self._libraries_panel, "splitterSizes"):
+            self._settings.setState("libraries_panel_split", self._libraries_panel.splitterSizes())
+        if hasattr(self._left_library_browser, "splitterSizes"):
+            self._settings.setState(
+                "left_library_browser_split", self._left_library_browser.splitterSizes()
+            )
+            self._settings.setState(
+                "right_library_browser_split", self._right_library_browser.splitterSizes()
+            )
 
         self._settings.saveAll()
         event.accept()

@@ -123,6 +123,9 @@ DEFAULT_STATE = {
     "sidebar_state": {
         "current_tab": "bookmarks",
     },
+    "libraries_panel_split": [200, 140, 200],
+    "left_library_browser_split": [200, 300],
+    "right_library_browser_split": [200, 300],
 }
 
 

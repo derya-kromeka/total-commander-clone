@@ -15,14 +15,19 @@ from PyQt5.QtWidgets import (
     QLabel,
     QPushButton,
     QDialogButtonBox,
-    QGridLayout,
-    QFrame,
     QApplication,
+    QWidget,
 )
 from PyQt5.QtCore import Qt
 
 from file_panel import formatFileSize
 from folder_stats import FolderSizeWorker
+from ui_helpers import (
+    buildPathComparisonGrid,
+    configureDialog,
+    hintLabel,
+    addScrollableBody,
+)
 
 
 def _format_dt(ts):
@@ -68,61 +73,49 @@ def _stat_summary(path):
 class ComparePathsDialog(QDialog):
     def __init__(self, left_path, right_path, left_title="Active", right_title="Other", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Compare paths")
+        configureDialog(self, "Compare paths", wide=True, min_h=360)
         self.setModal(True)
-        self.resize(720, 360)
         self._workers = []
 
         left = _stat_summary(left_path)
         right = _stat_summary(right_path)
 
         root = QVBoxLayout(self)
-        hint = QLabel(
+        body = QWidget(self)
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.addWidget(hintLabel(
             "Side-by-side comparison. Folder sizes and counts are calculated in the background."
+        ))
+
+        built = buildPathComparisonGrid(
+            left_title,
+            right_title,
+            [
+                ("Path", "path"),
+                ("Exists", "exists"),
+                ("Type", "label"),
+                ("Modified", "mod"),
+                ("Size", "size"),
+                ("Contents", "contents"),
+            ],
+            self,
         )
-        hint.setWordWrap(True)
-        root.addWidget(hint)
-
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(16)
-        grid.setVerticalSpacing(8)
-
-        grid.addWidget(self._header(left_title), 0, 1)
-        grid.addWidget(self._header(right_title), 0, 2)
-
-        rows = [
-            ("Path", "path"),
-            ("Exists", "exists"),
-            ("Type", "label"),
-            ("Modified", "mod"),
-            ("Size", "size"),
-            ("Contents", "contents"),
-        ]
-        self._left_labels = {}
-        self._right_labels = {}
-        for i, (title, key) in enumerate(rows, start=1):
-            grid.addWidget(QLabel(title), i, 0, Qt.AlignTop)
-            left_lbl = QLabel()
-            left_lbl.setWordWrap(True)
-            left_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            right_lbl = QLabel()
-            right_lbl.setWordWrap(True)
-            right_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            grid.addWidget(left_lbl, i, 1, Qt.AlignTop)
-            grid.addWidget(right_lbl, i, 2, Qt.AlignTop)
-            self._left_labels[key] = left_lbl
-            self._right_labels[key] = right_lbl
-
-        root.addLayout(grid)
+        self._left_labels = built["left_labels"]
+        self._right_labels = built["right_labels"]
+        body_layout.addLayout(built["grid"])
 
         self._diff_label = QLabel()
         self._diff_label.setWordWrap(True)
         self._diff_label.setObjectName("compareDiffSummary")
-        root.addWidget(self._diff_label)
+        body_layout.addWidget(self._diff_label)
+        addScrollableBody(root, body)
 
         copy_row = QHBoxLayout()
         btn_copy_left = QPushButton("Copy left path")
         btn_copy_right = QPushButton("Copy right path")
+        btn_copy_left.setToolTip("Copy the left path to the clipboard.")
+        btn_copy_right.setToolTip("Copy the right path to the clipboard.")
         btn_copy_left.clicked.connect(
             lambda: QApplication.clipboard().setText(left.get("path") or "")
         )

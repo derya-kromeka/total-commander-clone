@@ -6,8 +6,9 @@ Sidebar UI for library roots, tags, and tagged folder results.
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QAbstractItemView, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+    QPushButton, QSplitter, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
+from ui_layout_policy import LayoutTier, tierAtMost
 
 
 ROLE_ITEM_TYPE = Qt.UserRole
@@ -40,7 +41,7 @@ class LibrariesPanel(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
 
         title = QLabel("Libraries")
-        title.setStyleSheet("font-weight: bold; font-size: 12px;")
+        title.setObjectName("sidebarPanelTitle")
         layout.addWidget(title)
 
         btn_row = QHBoxLayout()
@@ -63,26 +64,53 @@ class LibrariesPanel(QWidget):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
+        self._splitter = QSplitter(Qt.Vertical)
+        self._splitter.setChildrenCollapsible(False)
+
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
         self._tree.itemClicked.connect(self._onTreeItemClicked)
         self._tree.itemDoubleClicked.connect(self._onTreeItemDoubleClicked)
-        layout.addWidget(self._tree, 1)
+        self._splitter.addWidget(self._tree)
 
+        tags_wrap = QWidget()
+        tags_layout = QVBoxLayout(tags_wrap)
+        tags_layout.setContentsMargins(0, 0, 0, 0)
+        tags_layout.setSpacing(2)
         self._tags_label = QLabel("Tags")
-        layout.addWidget(self._tags_label)
-
+        self._tags_label.setObjectName("sidebarSectionTitle")
+        tags_layout.addWidget(self._tags_label)
         self._tags_list = QListWidget()
         self._tags_list.setSelectionMode(QAbstractItemView.MultiSelection)
         self._tags_list.itemSelectionChanged.connect(self._rebuildResults)
-        layout.addWidget(self._tags_list, 1)
+        tags_layout.addWidget(self._tags_list, 1)
+        self._splitter.addWidget(tags_wrap)
 
+        results_wrap = QWidget()
+        results_layout = QVBoxLayout(results_wrap)
+        results_layout.setContentsMargins(0, 0, 0, 0)
+        results_layout.setSpacing(2)
         self._results_label = QLabel("Matching folders")
-        layout.addWidget(self._results_label)
-
+        self._results_label.setObjectName("sidebarSectionTitle")
+        results_layout.addWidget(self._results_label)
         self._results_list = QListWidget()
         self._results_list.itemDoubleClicked.connect(self._onResultDoubleClicked)
-        layout.addWidget(self._results_list, 1)
+        results_layout.addWidget(self._results_list, 1)
+        self._splitter.addWidget(results_wrap)
+
+        self._splitter.setSizes([200, 140, 200])
+        layout.addWidget(self._splitter, 1)
+
+    def splitterSizes(self):
+        return self._splitter.sizes()
+
+    def applySplitterSizes(self, sizes):
+        if isinstance(sizes, (list, tuple)) and len(sizes) >= 3:
+            self._splitter.setSizes([int(s) for s in sizes[:3]])
+
+    def applyLayoutTier(self, tier):
+        compact = tierAtMost(tier, LayoutTier.NARROW)
+        self._btn_add.setText("Add" if compact else "Add root")
 
     # --------------------------------------------------------
     # Method: setData

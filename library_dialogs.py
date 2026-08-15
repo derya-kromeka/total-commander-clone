@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (
 )
 
 from library_manager import parseTagCategory
+from ui_helpers import configureDialog, hintLabel, selectablePathLabel, setAccessible
 
 
 # ------------------------------------------------------------
@@ -25,8 +26,7 @@ class LibraryRootDialog(QDialog):
     # --------------------------------------------------------
     def __init__(self, existing_libraries, initial_root_path="", initial_library_name="", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Add To Library")
-        self.setMinimumWidth(480)
+        configureDialog(self, "Add To Library", min_w=480)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -37,6 +37,7 @@ class LibraryRootDialog(QDialog):
         if initial_library_name:
             self._library_name.setEditText(initial_library_name)
         form.addRow("Library:", self._library_name)
+        setAccessible(self._library_name, "Library name", "Existing library or a new name.")
 
         self._root_name = QLineEdit()
         form.addRow("Root name:", self._root_name)
@@ -44,13 +45,13 @@ class LibraryRootDialog(QDialog):
         root_row = QHBoxLayout()
         self._root_path = QLineEdit(initial_root_path)
         browse_btn = QPushButton("Browse...")
+        browse_btn.setToolTip("Choose the folder that should become a library root.")
         browse_btn.clicked.connect(self._browseForRoot)
         root_row.addWidget(self._root_path, 1)
         root_row.addWidget(browse_btn)
         form.addRow("Root folder:", root_row)
 
-        hint = QLabel("Choose the folder that should act as the portable library root.")
-        hint.setWordWrap(True)
+        hint = hintLabel("Choose the folder that should act as the portable library root.")
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
@@ -96,8 +97,7 @@ class TagAssignmentDialog(QDialog):
     def __init__(self, folder_path, existing_tags=None, existing_note="",
                  known_tags=None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Assign Tags")
-        self.setMinimumWidth(520)
+        configureDialog(self, "Assign Tags", min_w=520)
 
         existing_tags = existing_tags or []
         known_tags = known_tags or []
@@ -105,12 +105,12 @@ class TagAssignmentDialog(QDialog):
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
-        path_label = QLabel(folder_path)
-        path_label.setWordWrap(True)
+        path_label = selectablePathLabel(folder_path)
         form.addRow("Folder:", path_label)
 
         self._tags_edit = QLineEdit(", ".join(existing_tags))
         self._tags_edit.setPlaceholderText("Example: customer:Acme, industry:Hatchery")
+        setAccessible(self._tags_edit, "Tags", "Comma-separated tags, optionally category:value.")
 
         if known_tags:
             completer = QCompleter(known_tags, self)
@@ -141,8 +141,7 @@ class TagAssignmentDialog(QDialog):
                 "Use comma-separated tags. "
                 "Example groups: customer:Name, industry:Hatchery, status:Open"
             )
-        hint = QLabel(hint_text)
-        hint.setWordWrap(True)
+        hint = hintLabel(hint_text)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)

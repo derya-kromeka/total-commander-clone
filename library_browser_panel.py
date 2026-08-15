@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import (
     QListWidgetItem, QPushButton, QSplitter, QTreeWidget,
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
+from ui_layout_policy import LayoutTier, tierAtMost
 
 from library_manager import parseTagCategory
 
@@ -34,6 +35,7 @@ class LibraryBrowserPanel(QWidget):
     addLibraryRequested = pyqtSignal()
     scanLibrariesRequested = pyqtSignal()
     assignTagsRequested = pyqtSignal()
+    activated = pyqtSignal()
 
     # --------------------------------------------------------
     # Method: __init__
@@ -74,7 +76,7 @@ class LibraryBrowserPanel(QWidget):
         results_layout.setSpacing(2)
 
         self._results_label = QLabel("Matching folders (0)")
-        self._results_label.setStyleSheet("font-weight: bold; font-size: 11px;")
+        self._results_label.setObjectName("sidebarSectionTitle")
         results_layout.addWidget(self._results_label)
 
         self._results_list = QListWidget()
@@ -84,11 +86,34 @@ class LibraryBrowserPanel(QWidget):
 
         content_splitter.addWidget(results_container)
         content_splitter.setSizes([200, 300])
+        self._content_splitter = content_splitter
 
         layout.addWidget(content_splitter, 1)
 
         action_bar = self._buildActionBar()
         layout.addLayout(action_bar)
+        self.setObjectName("libraryPanel")
+
+    def mousePressEvent(self, event):
+        self.activated.emit()
+        super().mousePressEvent(event)
+
+    def splitterSizes(self):
+        return self._content_splitter.sizes()
+
+    def applySplitterSizes(self, sizes):
+        if isinstance(sizes, (list, tuple)) and len(sizes) >= 2:
+            self._content_splitter.setSizes([int(s) for s in sizes[:2]])
+
+    def applyLayoutTier(self, tier):
+        compact = tierAtMost(tier, LayoutTier.NARROW)
+        self._btn_add_root.setText("Add" if compact else "Add Root")
+        self._btn_scan.setText("Scan")
+        self._btn_assign_tags.setText("Tags" if compact else "Assign Tags")
+        self._btn_switch.setText("Files" if compact else "\U0001F4C2 File Panel")
+        self._btn_open_active.setText("Open" if compact else "Open in Active Panel")
+        self._btn_open_left.setText("Left" if compact else "Open in Left")
+        self._btn_open_right.setText("Right" if compact else "Open in Right")
 
     # --------------------------------------------------------
     # Method: _buildHeader
@@ -103,7 +128,7 @@ class LibraryBrowserPanel(QWidget):
         title_row.setSpacing(6)
 
         title = QLabel("\U0001F4DA Library Browser")
-        title.setStyleSheet("font-weight: bold; font-size: 13px;")
+        title.setObjectName("sidebarPanelTitle")
         title_row.addWidget(title)
 
         title_row.addStretch()
@@ -160,7 +185,7 @@ class LibraryBrowserPanel(QWidget):
         header.addLayout(selector_row)
 
         tag_label = QLabel("Tags (select to filter)")
-        tag_label.setStyleSheet("font-weight: bold; font-size: 11px; margin-top: 4px;")
+        tag_label.setObjectName("sidebarSectionTitle")
         header.addWidget(tag_label)
 
         return header

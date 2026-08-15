@@ -99,8 +99,9 @@ from PyQt5.QtWidgets import (
     QPushButton, QAbstractItemView, QHeaderView, QFrame, QLabel,
     QStyledItemDelegate, QStyle, QApplication, QComboBox,
     QFileIconProvider, QInputDialog, QMessageBox, QProgressDialog,
-    QMenu, QAction, QActionGroup, QCheckBox,
+    QMenu, QAction, QActionGroup, QCheckBox, QToolButton, QSizePolicy,
 )
+from ui_layout_policy import LayoutTier, layoutTierForPane, tierAtMost
 from PyQt5.QtCore import (
     Qt, QAbstractTableModel, QModelIndex, QVariant, QMimeData,
     QUrl, pyqtSignal, QSortFilterProxyModel, QPoint, QTimer, QEvent,
@@ -1463,6 +1464,11 @@ class FilePanel(QWidget):
         self._column_width_save_timer.setSingleShot(True)
         self._column_width_save_timer.setInterval(400)
         self._column_width_save_timer.timeout.connect(self._persistColumnWidthsToState)
+        self._layout_tier = LayoutTier.COMFORTABLE
+        self._layout_tier_timer = QTimer(self)
+        self._layout_tier_timer.setSingleShot(True)
+        self._layout_tier_timer.setInterval(50)
+        self._layout_tier_timer.timeout.connect(self._refreshLayoutTier)
 
         self._initUI()
         self._connectSignals()
@@ -1711,9 +1717,30 @@ class FilePanel(QWidget):
         nav_layout.addWidget(self._btn_home)
         nav_layout.addWidget(self._btn_new_folder)
         nav_layout.addWidget(self._drive_container)
+        self._btn_more = QToolButton()
+        self._btn_more.setObjectName("navOverflowButton")
+        self._btn_more.setText("More")
+        self._btn_more.setPopupMode(QToolButton.InstantPopup)
+        self._btn_more.setToolTip(
+            "More actions\n\nPath copy/paste, Home, and New folder when this pane is narrow."
+        )
+        self._btn_more.setAutoRaise(True)
+        more_menu = QMenu(self._btn_more)
+        self._act_more_copy = more_menu.addAction("Copy path")
+        self._act_more_copy.triggered.connect(self._copyPathToClipboard)
+        self._act_more_paste = more_menu.addAction("Paste path")
+        self._act_more_paste.triggered.connect(self._pastePathAndNavigate)
+        self._act_more_home = more_menu.addAction("Home")
+        self._act_more_home.triggered.connect(self._goHome)
+        self._act_more_new = more_menu.addAction("New folder")
+        self._act_more_new.triggered.connect(self.createNewFolder)
+        self._btn_more.setMenu(more_menu)
+        self._btn_more.setVisible(False)
+
         nav_layout.addWidget(self._filter_edit, 1)
         nav_layout.addWidget(self._btn_clear_filter, 0, Qt.AlignVCenter)
         nav_layout.addWidget(self._btn_filter_options, 0, Qt.AlignVCenter)
+        nav_layout.addWidget(self._btn_more, 0, Qt.AlignVCenter)
 
         layout.addLayout(nav_layout)
 
@@ -1813,6 +1840,10 @@ class FilePanel(QWidget):
         self._drive_arrow.setFixedSize(arrow_w, h)
         self._drive_container.setFixedSize(metrics["drive_combo_width"] + arrow_w, h)
         self._filter_edit.setFixedHeight(h)
+        if hasattr(self, "_btn_more"):
+            self._btn_more.setFixedHeight(h)
+        compact = tierAtMost(getattr(self, "_layout_tier", LayoutTier.COMFORTABLE), LayoutTier.NARROW)
+        self._filter_edit.setMinimumWidth(80 if compact else 120)
         if getattr(self, "_drive_line_edit", None) is not None:
             self._drive_line_edit.setAlignment(Qt.AlignVCenter | Qt.AlignHCenter)
         self._filter_edit.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
@@ -1825,12 +1856,61 @@ class FilePanel(QWidget):
         table_icon = metrics.get("table_icon_size", 16)
         self._table.setIconSize(QSize(table_icon, table_icon))
         self._layout_scale = float(metrics.get("layout_scale", 1.0))
+        self._ui_metrics = metrics
         self._refreshHeaderSectionMinimums()
+        self._refreshLayoutTier()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._layout_tier_timer.start()
+
+    # --------------------------------------------------------
+    # Method: applyLayoutTier
+    # Purpose: Compact nav chrome when this pane is narrow.
+    #          Path, Back/Up, drive, and filter stay visible.
+    # --------------------------------------------------------
+    def applyLayoutTier(self, tier):
+        if not hasattr(self, "_btn_more"):
+            return
+        self._layout_tier = tier
+        compact = tierAtMost(tier, LayoutTier.NARROW)
+        critical = tier == LayoutTier.CRITICAL
+
+        self._btn_copy_path.setVisible(not compact)
+        self._btn_paste_path.setVisible(not compact)
+        self._btn_home.setVisible(not compact)
+        self._btn_new_folder.setVisible(not compact)
+        self._btn_more.setVisible(compact)
+        self._btn_more.setText("…" if critical else "More")
+
+        if compact:
+            self._btn_filter_options.setText("")
+            self._filter_edit.setMinimumWidth(72 if critical else 80)
+            if self._hasActiveFilter():
+                self._btn_clear_filter.setVisible(False)
+        else:
+            if not self._btn_filter_options.icon().isNull():
+                self._btn_filter_options.setText("Settings")
+            else:
+                self._btn_filter_options.setText("\u2699 Settings")
+            self._filter_edit.setMinimumWidth(120)
+            self._btn_clear_filter.setVisible(self._hasActiveFilter())
+
+        banner_compact = compact
+        if hasattr(self, "_filter_banner_refresh_btn"):
+            self._filter_banner_refresh_btn.setText("Refresh" if not banner_compact else "\u21bb")
+            self._filter_banner_btn.setText("Clear filter" if not banner_compact else "\u2715")
+
+    def _refreshLayoutTier(self):
+        metrics = getattr(self, "_ui_metrics", None)
+        tier = layoutTierForPane(self.width(), metrics)
+        self.applyLayoutTier(tier)
 
     # --------------------------------------------------------
     # Column width persistence (all columns; state.json per panel).
-    # After first layout or a manual resize, widths are frozen and may exceed
-    # the viewport — horizontal scroll appears instead of shrinking columns.
+    # Unlocked columns reflow with the viewport. Explicitly locked
+    # columns keep their pixel width; horizontal scroll appears only
+    # when locked widths plus readable minimums cannot fit.
     # --------------------------------------------------------
     COLUMN_WIDTH_KEYS = ("name", "size", "type", "date_modified")
     COLUMN_VISIBILITY_KEYS = ("name", "size", "type", "date_modified")
@@ -1979,10 +2059,7 @@ class FilePanel(QWidget):
         self._viewport_layout_timer.start()
 
     def _onTableViewportResized(self):
-        if self._freeze_column_widths:
-            self._applyColumnMinimumWidthsOnly()
-        else:
-            self._scheduleFitColumnsToViewport()
+        self._scheduleFitColumnsToViewport()
 
     def _applyColumnMinimumWidthsOnly(self):
         """
@@ -2049,15 +2126,12 @@ class FilePanel(QWidget):
             )
         else:
             self._locked_column_width_px.pop(key, None)
-        if self._freeze_column_widths:
-            self._applyColumnMinimumWidthsOnly()
-        else:
-            self._fitColumnsToViewport()
+        self._fitColumnsToViewport()
 
     def _fitColumnsToViewport(self):
         """
-        One-time / explicit layout: fit visible columns into the viewport width.
-        Not used after saved or user-set widths (_freeze_column_widths).
+        Fit unlocked visible columns into the viewport. Locked columns keep
+        their stored pixel width unless they plus readable minimums overflow.
         """
         if self._column_width_clamping:
             return
@@ -2194,10 +2268,7 @@ class FilePanel(QWidget):
             v = vis_dict.get(key)
             if v is not None:
                 self._table.setColumnHidden(col, not bool(v))
-        if self._freeze_column_widths:
-            self._applyColumnMinimumWidthsOnly()
-        else:
-            self._fitColumnsToViewport()
+        self._fitColumnsToViewport()
 
     def getColumnVisibility(self):
         """Return visibility flags for each column."""
@@ -2208,12 +2279,9 @@ class FilePanel(QWidget):
         }
 
     def relayoutColumns(self):
-        """Initial viewport fit once, then only enforce column minimum widths."""
-        if self._freeze_column_widths:
-            self._applyColumnMinimumWidthsOnly()
-        else:
-            self._fitColumnsToViewport()
-            self._freeze_column_widths = True
+        """Fit unlocked columns to the viewport; locked widths stay fixed."""
+        self._fitColumnsToViewport()
+        self._freeze_column_widths = True
 
     def applyColumnWidths(self, widths_dict):
         """Apply saved column widths without shrinking to the viewport."""
@@ -2274,11 +2342,12 @@ class FilePanel(QWidget):
         self._table.horizontalHeader().sectionResized.connect(self._onColumnSectionResized)
         QTimer.singleShot(0, self.relayoutColumns)
 
-    def _onColumnSectionResized(self, _logical_index, _old_size, _new_size):
+    def _onColumnSectionResized(self, logical_index, _old_size, new_size):
         if self._column_width_clamping:
             return
-        self._freeze_column_widths = True
-        self._applyColumnMinimumWidthsOnly()
+        key = self._columnKeyAt(logical_index)
+        if key and self._column_width_locked.get(key):
+            self._locked_column_width_px[key] = max(1, int(new_size))
         self._column_width_save_timer.start()
 
     # --------------------------------------------------------
@@ -2299,6 +2368,7 @@ class FilePanel(QWidget):
             self._btn_home,
             self._btn_filter_options,
             self._btn_new_folder,
+            self._btn_more,
             self._drive_combo,
             self._drive_arrow,
             self._table.horizontalHeader(),
@@ -2867,6 +2937,7 @@ class FilePanel(QWidget):
             self._btn_home,
             self._btn_filter_options,
             self._btn_new_folder,
+            self._btn_more,
             self._drive_combo,
             self._drive_arrow,
             self._table.horizontalHeader(),
@@ -3098,8 +3169,7 @@ class FilePanel(QWidget):
                 action.blockSignals(False)
                 return
         self._table.setColumnHidden(col, not visible)
-        self._freeze_column_widths = True
-        self._applyColumnMinimumWidthsOnly()
+        self._fitColumnsToViewport()
 
     def _distributeColumnsEvenly(self):
         """Give each unlocked visible column an equal share; locked widths stay fixed."""
@@ -3348,7 +3418,8 @@ class FilePanel(QWidget):
         else:
             self._filter_edit.setPlaceholderText(f"\U0001F50D Filter{extra}…")
 
-        self._btn_clear_filter.setVisible(active)
+        compact = tierAtMost(getattr(self, "_layout_tier", LayoutTier.COMFORTABLE), LayoutTier.NARROW)
+        self._btn_clear_filter.setVisible(active and not compact)
         self._filter_banner.setVisible(active)
         if active:
             if hidden > 0:

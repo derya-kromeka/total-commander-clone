@@ -54,7 +54,7 @@
     },
     "recent_paths": [],
     "left_panel": {
-        "current_path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust-master\\scripts",
+        "current_path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\chickline-v4-master",
         "history": [
             "G:\\",
             "G:\\My Drive",
@@ -128,14 +128,29 @@
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust-master",
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust-master\\scripts",
-            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Banvit - BRF\\KT-1939 BRF Bandırma Box Sorter Solutions"
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Banvit - BRF\\KT-1939 BRF Bandırma Box Sorter Solutions",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\chickline-v4-master"
         ],
+        "column_widths": {
+            "name": 323,
+            "size": 64,
+            "type": 50,
+            "date_modified": 124
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -151,20 +166,7 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 323,
-            "size": 64,
-            "type": 50,
-            "date_modified": 124
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     },
     "right_panel": {
         "current_path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\candling-on-rust-main",
@@ -179,12 +181,25 @@
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\candling-on-rust-main"
         ],
+        "column_widths": {
+            "name": 347,
+            "size": 100,
+            "type": 120,
+            "date_modified": 124
+        },
         "column_visibility": {
             "name": true,
             "size": true,
             "type": true,
             "date_modified": true
         },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {},
         "filter_mode": "contains",
         "filter_kind": "all",
         "filter_text": "",
@@ -200,19 +215,6 @@
             "date_after": null,
             "date_before": null,
             "combine_and": true
-        },
-        "column_widths": {
-            "name": 347,
-            "size": 100,
-            "type": 120,
-            "date_modified": 124
-        },
-        "column_width_locked": {
-            "name": false,
-            "size": false,
-            "type": false,
-            "date_modified": false
-        },
-        "locked_column_widths": {}
+        }
     }
 }

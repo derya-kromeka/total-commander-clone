@@ -1,7 +1,7 @@
 """
-Total Commander Clone - Dark Theme Stylesheet
-Provides a modern, flat dark theme using Qt Style Sheets (QSS).
-Color palette inspired by Catppuccin Mocha.
+Total Commander Clone - Theme Stylesheet
+Modern flat QSS for dark (Catppuccin Mocha), light (Catppuccin Latte),
+and a structural overlay for the system/native style.
 """
 
 from PyQt5.QtGui import QFont
@@ -137,6 +137,21 @@ def getUiMetrics(font_size_pt, ui_scale_percent=DEFAULT_UI_SCALE_PERCENT):
         "path_edit_pad_h": px(10, 6),
         "sidebar_tab_min_width": px(92, 72),
         "scrollbar_thickness": px(10, 8),
+        "splitter_handle": px(6, 4),
+        "dialog_pad": px(12, 8),
+        "dialog_min_w": px(480, 400),
+        "dialog_min_h": px(360, 280),
+        "dialog_wide_min_w": px(640, 520),
+        "transfers_progress_min": px(80, 64),
+        "transfers_progress_max": px(220, 160),
+        "pane_critical_px": px(340, 280),
+        "pane_narrow_px": px(430, 340),
+        "pane_medium_px": px(520, 400),
+        "pane_comfortable_px": px(680, 520),
+        "window_narrow_px": px(1020, 800),
+        "window_medium_px": px(1200, 960),
+        "window_wide_px": px(1600, 1280),
+        "content_short_h": px(520, 420),
     }
 
 
@@ -163,7 +178,7 @@ def _fontSizesPt(base_pt, scale_factor=1.0):
 
 
 # ------------------------------------------------------------
-# Color Constants
+# Color Constants (Catppuccin Mocha + Latte)
 # ------------------------------------------------------------
 COLORS = {
     "base":        "#1e1e2e",
@@ -199,7 +214,81 @@ COLORS = {
     "scrollbar_bg": "#1e1e2e",
     "scrollbar_handle": "#45475a",
     "scrollbar_hover":  "#585b70",
+    "accent_fg":   "#11111b",
 }
+
+COLORS_LIGHT = {
+    "base":        "#eff1f5",
+    "mantle":      "#e6e9ef",
+    "crust":       "#dce0e8",
+    "surface0":    "#ccd0da",
+    "surface1":    "#bcc0cc",
+    "surface2":    "#acb0be",
+    "overlay0":    "#9ca0b0",
+    "overlay1":    "#8c8fa1",
+    "text":        "#4c4f69",
+    "subtext0":    "#6c6f85",
+    "subtext1":    "#5c5f77",
+    "blue":        "#1e66f5",
+    "lavender":    "#7287fd",
+    "sapphire":    "#209fb5",
+    "green":       "#40a02b",
+    "red":         "#d20f39",
+    "peach":       "#fe640b",
+    "yellow":      "#df8e1d",
+    "mauve":       "#8839ef",
+    "rosewater":   "#dc8a78",
+    "panel_bg":    "#e8eaf2",
+    "active_border": "#1e66f5",
+    "panel_focus_ring": "#fe640b",
+    "hover":       "#dce0e8",
+    "selection":   "#bcc6e0",
+    "border":      "#bcc0cc",
+    "button":      "#ccd0da",
+    "button_hover": "#bcc0cc",
+    "button_press": "#acb0be",
+    "input_bg":    "#ffffff",
+    "scrollbar_bg": "#eff1f5",
+    "scrollbar_handle": "#acb0be",
+    "scrollbar_hover":  "#9ca0b0",
+    "accent_fg":   "#ffffff",
+}
+
+
+def _hexRgba(hex_color, alpha):
+    """Convert #rrggbb plus 0-1 alpha to a QSS rgba() string."""
+    raw = (hex_color or "#888888").lstrip("#")
+    if len(raw) != 6:
+        raw = "888888"
+    red = int(raw[0:2], 16)
+    green = int(raw[2:4], 16)
+    blue = int(raw[4:6], 16)
+    return f"rgba({red}, {green}, {blue}, {alpha})"
+
+
+def getThemePalette(theme_mode="dark"):
+    """Return the semantic color map for dark or light (Latte)."""
+    mode = (theme_mode or "dark").lower()
+    if mode == "light":
+        return COLORS_LIGHT
+    return COLORS
+
+
+def themeColor(name, theme_mode=None):
+    """
+    Look up a palette token. When theme_mode is None, use the
+    palette last applied via applyTheme (falls back to dark).
+    """
+    from PyQt5.QtWidgets import QApplication
+
+    if theme_mode:
+        palette = getThemePalette(theme_mode)
+    else:
+        app = QApplication.instance()
+        palette = getattr(app, "_theme_palette", None) if app is not None else None
+        if not palette:
+            palette = COLORS
+    return palette.get(name, COLORS.get(name, "#888888"))
 
 
 # ------------------------------------------------------------
@@ -207,13 +296,22 @@ COLORS = {
 # Purpose: Returns the complete QSS stylesheet string for the
 #          dark theme applied to the entire application.
 # ------------------------------------------------------------
-def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
-    c = COLORS
+def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None, colors=None):
+    c = colors or COLORS
     if metrics is None:
         metrics = getUiMetrics(font_size_pt, DEFAULT_UI_SCALE_PERCENT)
     sf = metrics["ui_scale_percent"] / 100.0
     fs = _fontSizesPt(font_size_pt, sf)
     m = metrics
+    red_a12 = _hexRgba(c["red"], 0.12)
+    red_a14 = _hexRgba(c["red"], 0.14)
+    red_a28 = _hexRgba(c["red"], 0.28)
+    red_a40 = _hexRgba(c["red"], 0.40)
+    blue_a14 = _hexRgba(c["blue"], 0.14)
+    blue_a18 = _hexRgba(c["blue"], 0.18)
+    blue_a28 = _hexRgba(c["blue"], 0.28)
+    blue_a40 = _hexRgba(c["blue"], 0.40)
+    peach_a16 = _hexRgba(c["peach"], 0.16)
     return f"""
 
     /* ====================================================== */
@@ -338,8 +436,17 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     }}
     QPushButton#accentButton {{
         background-color: {c['active_border']};
-        color: {c['crust']};
+        color: {c.get('accent_fg', c['crust'])};
         font-weight: bold;
+    }}
+    QPushButton#destructiveButton {{
+        color: {c['red']};
+        border: 1px solid {c['red']};
+        background-color: {red_a12};
+    }}
+    QPushButton#destructiveButton:hover {{
+        background-color: {red_a28};
+        border-color: {c['red']};
     }}
     QPushButton#accentButton:hover {{
         background-color: {c['blue']};
@@ -385,12 +492,12 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     }}
     QLineEdit#panelFilterEdit[filterActive="true"] {{
         border: 2px solid {c['red']};
-        background-color: rgba(243, 139, 168, 0.14);
+        background-color: {red_a14};
         color: {c['text']};
     }}
     QPushButton#filterClearButton {{
         color: {c['red']};
-        background-color: rgba(243, 139, 168, 0.12);
+        background-color: {red_a12};
         border: 2px solid {c['red']};
         border-radius: 4px;
         font-weight: bold;
@@ -399,11 +506,11 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
         max-height: {m['nav_bar_height']}px;
     }}
     QPushButton#filterClearButton:hover {{
-        background-color: rgba(243, 139, 168, 0.28);
+        background-color: {red_a28};
         border-color: {c['red']};
     }}
     QPushButton#filterClearButton:pressed {{
-        background-color: rgba(243, 139, 168, 0.4);
+        background-color: {red_a40};
     }}
     QPushButton#filterSettingsButton {{
         color: {c['text']};
@@ -426,11 +533,11 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     }}
     QPushButton#filterSettingsButton[filterActive="true"] {{
         border-color: {c['active_border']};
-        background-color: rgba(137, 180, 250, 0.18);
+        background-color: {blue_a18};
     }}
     QPushButton#filterRefreshButton {{
         color: {c['text']};
-        background-color: rgba(137, 180, 250, 0.14);
+        background-color: {blue_a14};
         border: 2px solid {c['active_border']};
         border-radius: 4px;
         font-weight: bold;
@@ -439,14 +546,14 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
         max-height: {m['nav_bar_height']}px;
     }}
     QPushButton#filterRefreshButton:hover {{
-        background-color: rgba(137, 180, 250, 0.28);
+        background-color: {blue_a28};
         border-color: {c['blue']};
     }}
     QPushButton#filterRefreshButton:pressed {{
-        background-color: rgba(137, 180, 250, 0.4);
+        background-color: {blue_a40};
     }}
     QWidget#panelFilterBanner {{
-        background-color: rgba(243, 139, 168, 0.12);
+        background-color: {red_a12};
         border: 2px solid {c['red']};
         border-radius: 5px;
     }}
@@ -575,11 +682,13 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     /* ====================================================== */
     QSplitter::handle {{
         background-color: {c['border']};
-        width: 4px;
+        width: {m.get('splitter_handle', 6)}px;
+        height: {m.get('splitter_handle', 6)}px;
     }}
     QSplitter::handle:hover {{
         background-color: {c['active_border']};
-        width: 4px;
+        width: {m.get('splitter_handle', 6)}px;
+        height: {m.get('splitter_handle', 6)}px;
     }}
 
     /* ====================================================== */
@@ -627,6 +736,100 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     /* ====================================================== */
     QDialog {{
         background-color: {c['base']};
+        padding: {m.get('dialog_pad', 12)}px;
+    }}
+    QScrollArea#dialogScrollArea {{
+        background: transparent;
+        border: none;
+    }}
+    QLabel#dialogSectionHeader {{
+        color: {c['text']};
+        font-weight: bold;
+        font-size: {fs['small']}pt;
+    }}
+    QLabel#sidebarPanelTitle, QLabel#sidebarSectionTitle {{
+        color: {c['text']};
+        font-weight: bold;
+        font-size: {fs['small']}pt;
+    }}
+    QLabel#dialogHint {{
+        color: {c['subtext0']};
+        font-size: {fs['tiny']}pt;
+    }}
+    QLabel#dialogError {{
+        color: {c['red']};
+        font-weight: bold;
+        font-size: {fs['small']}pt;
+    }}
+    QLabel#compareDiffSummary {{
+        color: {c['peach']};
+        background-color: {peach_a16};
+        border: 1px solid {c['peach']};
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-weight: bold;
+    }}
+    QLabel#pathValueLabel {{
+        color: {c['text']};
+    }}
+    QPlainTextEdit#monospaceOutput {{
+        background-color: {c['input_bg']};
+        color: {c['text']};
+        border: 1px solid {c['border']};
+        border-radius: 6px;
+        font-family: "Consolas", "Courier New", monospace;
+        font-size: {fs['small']}pt;
+    }}
+    QRadioButton {{
+        color: {c['text']};
+        spacing: 8px;
+        background: transparent;
+    }}
+    QRadioButton::indicator {{
+        width: 16px;
+        height: 16px;
+        border: 2px solid {c['border']};
+        border-radius: 9px;
+        background-color: {c['input_bg']};
+    }}
+    QRadioButton::indicator:checked {{
+        background-color: {c['active_border']};
+        border-color: {c['active_border']};
+    }}
+    QSpinBox, QDateTimeEdit {{
+        background-color: {c['input_bg']};
+        color: {c['text']};
+        border: 1px solid {c['border']};
+        border-radius: 6px;
+        padding: 4px 8px;
+        min-height: {m['btn_min_height']}px;
+    }}
+    QSpinBox:focus, QDateTimeEdit:focus {{
+        border: 1px solid {c['active_border']};
+    }}
+    QSpinBox:disabled, QDateTimeEdit:disabled {{
+        color: {c['overlay0']};
+        background-color: {c['surface0']};
+    }}
+    QPlainTextEdit {{
+        background-color: {c['input_bg']};
+        color: {c['text']};
+        border: 1px solid {c['border']};
+        border-radius: 6px;
+        selection-background-color: {c['selection']};
+    }}
+    QTableWidget {{
+        background-color: {c['panel_bg']};
+        alternate-background-color: {c['base']};
+        color: {c['text']};
+        gridline-color: {c['surface0']};
+        border: 1px solid {c['border']};
+        border-radius: 6px;
+        selection-background-color: {c['selection']};
+    }}
+    QTableWidget#propertiesTable {{
+        background-color: {c['panel_bg']};
+        alternate-background-color: {c['base']};
     }}
 
     /* ====================================================== */
@@ -778,8 +981,25 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
     }}
     QWidget#filePanelActive {{
         background-color: {c['panel_bg']};
+        border: 2px solid {c['panel_focus_ring']};
+        border-radius: 8px;
+    }}
+    QWidget#libraryPanel {{
+        background-color: {c['panel_bg']};
         border: 1px solid {c['overlay0']};
         border-radius: 8px;
+    }}
+    QWidget#libraryPanelActive {{
+        background-color: {c['panel_bg']};
+        border: 2px solid {c['panel_focus_ring']};
+        border-radius: 8px;
+    }}
+    QStackedWidget#paneStackActive {{
+        border: 1px solid {c['panel_focus_ring']};
+        border-radius: 8px;
+    }}
+    QStackedWidget#paneStackInactive {{
+        border: 1px solid transparent;
     }}
 
     /* Active panel: orange ring on address bar + file table (path + panelFileTable) */
@@ -846,7 +1066,7 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
         font-size: {fs['small']}pt;
         color: {c['subtext1']};
         min-width: 0;
-        max-width: 140px;
+        max-width: 220px;
     }}
     QFrame#bottomBar QPushButton:hover {{
         background-color: {c['button_hover']};
@@ -1034,20 +1254,114 @@ def getDarkThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
         background-color: {c['selection']};
         color: {c['text']};
     }}
+    QTreeWidget#bookmarksTree {{
+        border: 1px solid {c['border']};
+    }}
+    QFrame#transferTaskRow {{
+        background-color: {c['surface0']};
+        border: 1px solid {c['border']};
+        border-radius: 6px;
+    }}
+    QLabel#transferTaskStatus {{
+        font-weight: bold;
+        color: {c['subtext1']};
+    }}
+    QLabel#transferTaskStatus[taskState="running"] {{
+        color: {c['blue']};
+    }}
+    QLabel#transferTaskStatus[taskState="done"] {{
+        color: {c['green']};
+    }}
+    QLabel#transferTaskStatus[taskState="failed"] {{
+        color: {c['red']};
+    }}
+    QLabel#transferTaskStatus[taskState="queued"] {{
+        color: {c['peach']};
+    }}
+    QLabel#transferTaskFile {{
+        color: {c['subtext0']};
+        font-size: {fs['tiny']}pt;
+    }}
+    QPushButton#navOverflowButton {{
+        padding: 4px;
+        min-width: 30px;
+        font-weight: bold;
+    }}
+    """
+
+
+def getLightThemeStylesheet(base_path=None, font_size_pt=10, metrics=None):
+    """Catppuccin Latte QSS using the same objectNames as the dark theme."""
+    return getDarkThemeStylesheet(
+        base_path=base_path,
+        font_size_pt=font_size_pt,
+        metrics=metrics,
+        colors=COLORS_LIGHT,
+    )
+
+
+def getStructuralStylesheet(font_size_pt=10, metrics=None):
+    """
+    Lightweight overlay for system/native chrome: hierarchy, focus rings,
+    and named dialog roles without replacing OS colors.
+    """
+    if metrics is None:
+        metrics = getUiMetrics(font_size_pt, DEFAULT_UI_SCALE_PERCENT)
+    fs = _fontSizesPt(font_size_pt, metrics["ui_scale_percent"] / 100.0)
+    ring = COLORS["panel_focus_ring"]
+    handle = metrics.get("splitter_handle", 6)
+    return f"""
+    QWidget#filePanelActive QLineEdit#panelPathEdit {{
+        border: 2px solid {ring};
+    }}
+    QWidget#filePanelActive QTableView#panelFileTable {{
+        border: 2px solid {ring};
+    }}
+    QWidget#filePanelActive, QWidget#libraryPanelActive {{
+        border: 2px solid {ring};
+        border-radius: 8px;
+    }}
+    QStackedWidget#paneStackActive {{
+        border: 1px solid {ring};
+        border-radius: 8px;
+    }}
+    QSplitter::handle {{
+        width: {handle}px;
+        height: {handle}px;
+    }}
+    QLabel#dialogSectionHeader, QLabel#sidebarPanelTitle, QLabel#sidebarSectionTitle {{
+        font-weight: bold;
+        font-size: {fs['small']}pt;
+    }}
+    QLabel#dialogHint {{
+        font-size: {fs['tiny']}pt;
+    }}
+    QLabel#dialogError {{
+        font-weight: bold;
+    }}
+    QLabel#compareDiffSummary {{
+        font-weight: bold;
+        padding: 8px 10px;
+        border-radius: 6px;
+    }}
+    QPlainTextEdit#monospaceOutput {{
+        font-family: "Consolas", "Courier New", monospace;
+        font-size: {fs['small']}pt;
+    }}
+    QPushButton#accentButton {{
+        font-weight: bold;
+    }}
+    QFrame#transferTaskRow {{
+        border-radius: 6px;
+    }}
     """
 
 
 def applyTheme(app, theme_mode, font_size_pt=None, ui_scale_percent=None):
     """
-    Apply dark (custom QSS), light (Fusion), or system default style + palette.
-    Expects app._system_style_name and app._system_palette set at startup (see main.py).
-
-    font_size_pt: optional base font size from Settings. When None, uses app.font()
-    point size (falls back to 10). Always updates QApplication font so light/system
-    themes match Settings on startup.
-
-    ui_scale_percent: density preset percent — spacing and control sizes (see getUiMetrics).
-    Layout metrics also scale with font_size_pt (10 pt = 100%).
+    Apply dark (Mocha QSS), light (Latte QSS on Fusion), or system style
+    plus a structural overlay. Expects app._system_style_name and
+    app._system_palette set at startup (see main.py).
     """
     from PyQt5.QtWidgets import QStyleFactory
 
@@ -1071,20 +1385,30 @@ def applyTheme(app, theme_mode, font_size_pt=None, ui_scale_percent=None):
     app.setFont(app_font)
 
     mode = (theme_mode or "dark").lower()
+    app._theme_mode = mode
 
     if mode == "dark":
-        app.setStyleSheet(getDarkThemeStylesheet(font_size_pt=font_size_pt, metrics=metrics))
+        app._theme_palette = COLORS
+        fusion_style = QStyleFactory.create("Fusion")
+        if fusion_style is not None:
+            app.setStyle(fusion_style)
+        app.setStyleSheet(
+            getDarkThemeStylesheet(font_size_pt=font_size_pt, metrics=metrics)
+        )
         return
 
-    app.setStyleSheet("")
-
     if mode == "light":
+        app._theme_palette = COLORS_LIGHT
         fusion_style = QStyleFactory.create("Fusion")
         if fusion_style is not None:
             app.setStyle(fusion_style)
             app.setPalette(fusion_style.standardPalette())
+        app.setStyleSheet(
+            getLightThemeStylesheet(font_size_pt=font_size_pt, metrics=metrics)
+        )
         return
 
+    app._theme_palette = COLORS
     system_style_name = getattr(app, "_system_style_name", "")
     if system_style_name:
         system_style = QStyleFactory.create(system_style_name)
@@ -1093,3 +1417,6 @@ def applyTheme(app, theme_mode, font_size_pt=None, ui_scale_percent=None):
     system_palette = getattr(app, "_system_palette", None)
     if system_palette is not None:
         app.setPalette(system_palette)
+    app.setStyleSheet(
+        getStructuralStylesheet(font_size_pt=font_size_pt, metrics=metrics)
+    )
