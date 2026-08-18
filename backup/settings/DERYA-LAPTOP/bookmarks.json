@@ -1,0 +1,48 @@
+{
+    "bookmarks": [
+        {
+            "type": "bookmark",
+            "name": "Downloads",
+            "path": "C:\\Users\\Derya\\Downloads",
+            "kind": "folder"
+        },
+        {
+            "type": "group",
+            "name": "Kromeka",
+            "expanded": true,
+            "children": [
+                {
+                    "type": "bookmark",
+                    "name": "(KROMEKA)",
+                    "path": "G:\\Shared drives",
+                    "kind": "folder"
+                },
+                {
+                    "type": "bookmark",
+                    "name": "10 - SATIŞ",
+                    "path": "G:\\Shared drives\\10 - SATIŞ",
+                    "kind": "folder"
+                }
+            ]
+        },
+        {
+            "type": "group",
+            "name": "PARA",
+            "expanded": true,
+            "children": [
+                {
+                    "type": "bookmark",
+                    "name": "PARA",
+                    "path": "C:\\Users\\Derya\\PARA",
+                    "kind": "folder"
+                },
+                {
+                    "type": "bookmark",
+                    "name": "Workshop",
+                    "path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+                    "kind": "folder"
+                }
+            ]
+        }
+    ]
+}

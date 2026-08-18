@@ -1,0 +1,220 @@
+{
+    "bookmarks": [
+        {
+            "type": "bookmark",
+            "name": "Downloads",
+            "path": "C:\\Users\\Derya\\Downloads",
+            "kind": "folder"
+        },
+        {
+            "type": "group",
+            "name": "Kromeka",
+            "expanded": true,
+            "children": [
+                {
+                    "type": "bookmark",
+                    "name": "(KROMEKA)",
+                    "path": "G:\\Shared drives",
+                    "kind": "folder"
+                },
+                {
+                    "type": "bookmark",
+                    "name": "10 - SATIŞ",
+                    "path": "G:\\Shared drives\\10 - SATIŞ",
+                    "kind": "folder"
+                }
+            ]
+        },
+        {
+            "type": "group",
+            "name": "PARA",
+            "expanded": true,
+            "children": [
+                {
+                    "type": "bookmark",
+                    "name": "PARA",
+                    "path": "C:\\Users\\Derya\\PARA",
+                    "kind": "folder"
+                },
+                {
+                    "type": "bookmark",
+                    "name": "Workshop",
+                    "path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+                    "kind": "folder"
+                }
+            ]
+        }
+    ],
+    "libraries": [],
+    "folder_tags": {},
+    "saved_library_filters": [],
+    "saved_file_filters": [],
+    "sidebar_state": {
+        "current_tab": "bookmarks"
+    },
+    "recent_paths": [],
+    "left_panel": {
+        "current_path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\chickline-v4-master",
+        "history": [
+            "G:\\",
+            "G:\\My Drive",
+            "G:\\",
+            "G:\\Shared drives",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Banvit - BRF",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Banvit - BRF\\KT-1939 BRF Bandırma Box Sorter Solutions",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\Downloads",
+            "C:\\Users\\Derya",
+            "G:\\",
+            "G:\\Shared drives",
+            "G:\\Shared drives",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia\\Al Marai",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia\\Al Marai\\KT-1952-Third In-Motion W_L Line",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia\\Al Marai\\KT-1952-Third In-Motion W_L Line\\Images",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Şenpiliç",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Aspiliç",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Aspiliç\\KT-1942 Aspiliç Canlı Kabul ve Vakum Hattı",
+            "G:\\Shared drives",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Banvit - BRF",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Banvit - BRF\\KT-1939 BRF Bandırma Box Sorter Solutions",
+            "G:\\Shared drives",
+            "G:\\",
+            "G:\\My Drive",
+            "G:\\My Drive\\90 - DERYA",
+            "G:\\My Drive\\90 - DERYA\\02_Areas",
+            "G:\\My Drive\\90 - DERYA\\02_Areas\\Ege",
+            "G:\\My Drive\\90 - DERYA\\02_Areas",
+            "G:\\My Drive\\90 - DERYA\\02_Areas\\Workshop",
+            "G:\\My Drive\\90 - DERYA\\02_Areas",
+            "G:\\My Drive\\90 - DERYA",
+            "G:\\Shared drives",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Bak Piliç",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Bak Piliç\\KT-1749 Bak Piliç Bantlı Konveyörler",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\Downloads",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia\\Al Marai",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia\\Al Marai\\KT-1952-Third In-Motion W_L Line",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\PARA",
+            "C:\\Users\\Derya\\PARA\\02_Areas",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\candling-on-rust-main",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\Downloads",
+            "C:\\Users\\Derya\\Downloads",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\PARA",
+            "C:\\Users\\Derya\\PARA\\02_Areas",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust-master",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\candling-on-rust-main",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust-master",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust-master\\scripts",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Banvit - BRF\\KT-1939 BRF Bandırma Box Sorter Solutions",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\chickline-v4-master"
+        ],
+        "column_visibility": {
+            "name": true,
+            "size": true,
+            "type": true,
+            "date_modified": true
+        },
+        "filter_mode": "contains",
+        "filter_kind": "all",
+        "filter_text": "",
+        "filter_exclude_text": "",
+        "filter_extensions": "",
+        "filter_words_combine_and": true,
+        "filter_include_subfolders": false,
+        "filter_advanced": {
+            "size_enabled": false,
+            "size_min": null,
+            "size_max": null,
+            "date_enabled": false,
+            "date_after": null,
+            "date_before": null,
+            "combine_and": true
+        },
+        "column_widths": {
+            "name": 241,
+            "size": 68,
+            "type": 89,
+            "date_modified": 99
+        },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {}
+    },
+    "right_panel": {
+        "current_path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\candling-on-rust-main",
+        "history": [
+            "C:\\Users\\Derya\\Downloads",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Banvit - BRF",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Banvit - BRF\\KT-1939 BRF Bandırma Box Sorter Solutions",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust-master\\scripts",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust-master",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\candling-on-rust-main"
+        ],
+        "column_visibility": {
+            "name": true,
+            "size": true,
+            "type": true,
+            "date_modified": true
+        },
+        "filter_mode": "contains",
+        "filter_kind": "all",
+        "filter_text": "",
+        "filter_exclude_text": "",
+        "filter_extensions": "",
+        "filter_words_combine_and": true,
+        "filter_include_subfolders": false,
+        "filter_advanced": {
+            "size_enabled": false,
+            "size_min": null,
+            "size_max": null,
+            "date_enabled": false,
+            "date_after": null,
+            "date_before": null,
+            "combine_and": true
+        },
+        "column_widths": {
+            "name": 239,
+            "size": 79,
+            "type": 79,
+            "date_modified": 99
+        },
+        "column_width_locked": {
+            "name": false,
+            "size": false,
+            "type": false,
+            "date_modified": false
+        },
+        "locked_column_widths": {}
+    }
+}
