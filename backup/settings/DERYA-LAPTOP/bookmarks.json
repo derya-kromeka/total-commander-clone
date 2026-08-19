@@ -43,6 +43,11 @@
                     "kind": "folder"
                 }
             ]
+        },
+        {
+            "type": "bookmark",
+            "name": "(ENTOMAK)",
+            "path": "H:\\Shared drives"
         }
     ]
 }

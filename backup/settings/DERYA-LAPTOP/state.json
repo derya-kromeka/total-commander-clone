@@ -43,6 +43,11 @@
                     "kind": "folder"
                 }
             ]
+        },
+        {
+            "type": "bookmark",
+            "name": "(ENTOMAK)",
+            "path": "H:\\Shared drives"
         }
     ],
     "libraries": [],
@@ -130,7 +135,9 @@
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust-master\\scripts",
             "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Banvit - BRF\\KT-1939 BRF Bandırma Box Sorter Solutions",
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
-            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\chickline-v4-master"
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\chickline-v4-master",
+            "H:\\",
+            "H:\\Shared drives"
         ],
         "column_visibility": {
             "name": true,
