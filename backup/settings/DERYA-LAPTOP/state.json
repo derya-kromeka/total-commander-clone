@@ -54,12 +54,18 @@
                 },
                 {
                     "kind": "folder",
+                    "name": "02 - AKTİF TEKLİFLER",
+                    "path": "H:\\Shared drives\\02 - AKTİF TEKLİFLER",
+                    "type": "bookmark"
+                },
+                {
+                    "kind": "folder",
                     "name": "03 - AKTİF PROJELER",
                     "path": "H:\\Shared drives\\03 - AKTİF PROJELER",
                     "type": "bookmark"
                 }
             ],
-            "expanded": false,
+            "expanded": true,
             "name": "Entomak",
             "type": "group"
         }
@@ -152,7 +158,9 @@
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\chickline-v4-master",
             "H:\\",
             "H:\\Shared drives",
-            "H:\\Shared drives\\03 - AKTİF PROJELER"
+            "H:\\Shared drives\\03 - AKTİF PROJELER",
+            "H:\\Shared drives",
+            "H:\\Shared drives\\02 - AKTİF TEKLİFLER"
         ],
         "column_visibility": {
             "name": true,

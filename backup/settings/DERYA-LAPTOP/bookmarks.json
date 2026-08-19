@@ -54,12 +54,18 @@
                 },
                 {
                     "kind": "folder",
+                    "name": "02 - AKTİF TEKLİFLER",
+                    "path": "H:\\Shared drives\\02 - AKTİF TEKLİFLER",
+                    "type": "bookmark"
+                },
+                {
+                    "kind": "folder",
                     "name": "03 - AKTİF PROJELER",
                     "path": "H:\\Shared drives\\03 - AKTİF PROJELER",
                     "type": "bookmark"
                 }
             ],
-            "expanded": false,
+            "expanded": true,
             "name": "Entomak",
             "type": "group"
         }
