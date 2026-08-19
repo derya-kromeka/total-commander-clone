@@ -1,53 +1,60 @@
 {
     "bookmarks": [
         {
-            "type": "bookmark",
+            "kind": "folder",
             "name": "Downloads",
             "path": "C:\\Users\\Derya\\Downloads",
-            "kind": "folder"
+            "type": "bookmark"
         },
         {
-            "type": "group",
-            "name": "Kromeka",
-            "expanded": true,
             "children": [
                 {
-                    "type": "bookmark",
+                    "kind": "folder",
                     "name": "(KROMEKA)",
                     "path": "G:\\Shared drives",
-                    "kind": "folder"
+                    "type": "bookmark"
                 },
                 {
-                    "type": "bookmark",
+                    "kind": "folder",
                     "name": "10 - SATIŞ",
                     "path": "G:\\Shared drives\\10 - SATIŞ",
-                    "kind": "folder"
+                    "type": "bookmark"
                 }
-            ]
+            ],
+            "expanded": true,
+            "name": "Kromeka",
+            "type": "group"
         },
         {
-            "type": "group",
-            "name": "PARA",
-            "expanded": true,
             "children": [
                 {
-                    "type": "bookmark",
+                    "kind": "folder",
                     "name": "PARA",
                     "path": "C:\\Users\\Derya\\PARA",
-                    "kind": "folder"
+                    "type": "bookmark"
                 },
                 {
-                    "type": "bookmark",
+                    "kind": "folder",
                     "name": "Workshop",
                     "path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
-                    "kind": "folder"
+                    "type": "bookmark"
                 }
-            ]
+            ],
+            "expanded": true,
+            "name": "PARA",
+            "type": "group"
         },
         {
-            "type": "bookmark",
+            "kind": "folder",
             "name": "(ENTOMAK)",
-            "path": "H:\\Shared drives"
+            "path": "H:\\Shared drives",
+            "type": "bookmark"
+        },
+        {
+            "kind": "folder",
+            "name": "03 - AKTİF PROJELER",
+            "path": "H:\\Shared drives\\03 - AKTİF PROJELER",
+            "type": "bookmark"
         }
     ],
     "libraries": [],
@@ -137,7 +144,8 @@
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\chickline-v4-master",
             "H:\\",
-            "H:\\Shared drives"
+            "H:\\Shared drives",
+            "H:\\Shared drives\\03 - AKTİF PROJELER"
         ],
         "column_visibility": {
             "name": true,
