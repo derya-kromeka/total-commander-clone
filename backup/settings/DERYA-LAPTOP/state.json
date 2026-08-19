@@ -161,6 +161,12 @@
             "H:\\Shared drives\\03 - AKTİF PROJELER",
             "H:\\Shared drives",
             "H:\\Shared drives\\02 - AKTİF TEKLİFLER",
+            "H:\\Shared drives\\03 - AKTİF PROJELER",
+            "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader",
+            "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader\\5 - Project Engineering",
+            "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader\\5 - Project Engineering\\C1C001241 Bak Pilic shared with Entomak",
+            "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader\\5 - Project Engineering\\C1C001241 Bak Pilic shared with Entomak\\Schemetics",
+            "H:\\Shared drives\\02 - AKTİF TEKLİFLER",
             "H:\\Shared drives\\03 - AKTİF PROJELER"
         ],
         "column_visibility": {
@@ -210,7 +216,10 @@
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust-master\\scripts",
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust-master",
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
-            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\candling-on-rust-main"
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\candling-on-rust-main",
+            "H:\\Shared drives\\03 - AKTİF PROJELER",
+            "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader",
+            "H:\\Shared drives\\03 - AKTİF PROJELER"
         ],
         "column_visibility": {
             "name": true,
@@ -235,9 +244,9 @@
             "combine_and": true
         },
         "column_widths": {
-            "name": 243,
-            "size": 77,
-            "type": 77,
+            "name": 279,
+            "size": 59,
+            "type": 59,
             "date_modified": 99
         },
         "column_width_locked": {
