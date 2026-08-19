@@ -167,7 +167,10 @@
             "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader\\5 - Project Engineering\\C1C001241 Bak Pilic shared with Entomak",
             "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader\\5 - Project Engineering\\C1C001241 Bak Pilic shared with Entomak\\Schemetics",
             "H:\\Shared drives\\02 - AKTİF TEKLİFLER",
-            "H:\\Shared drives\\03 - AKTİF PROJELER"
+            "H:\\Shared drives\\03 - AKTİF PROJELER",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Bak Piliç"
         ],
         "column_visibility": {
             "name": true,
@@ -192,9 +195,9 @@
             "combine_and": true
         },
         "column_widths": {
-            "name": 272,
-            "size": 54,
-            "type": 72,
+            "name": 356,
+            "size": 53,
+            "type": 70,
             "date_modified": 99
         },
         "column_width_locked": {
@@ -219,7 +222,11 @@
             "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\candling-on-rust-main",
             "H:\\Shared drives\\03 - AKTİF PROJELER",
             "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader",
-            "H:\\Shared drives\\03 - AKTİF PROJELER"
+            "H:\\Shared drives\\03 - AKTİF PROJELER",
+            "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader",
+            "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader\\5 - Project Engineering",
+            "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader\\5 - Project Engineering\\C1C001241 Bak Pilic shared with Entomak",
+            "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader\\5 - Project Engineering\\C1C001241 Bak Pilic shared with Entomak\\Schemetics"
         ],
         "column_visibility": {
             "name": true,
