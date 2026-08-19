@@ -160,7 +160,8 @@
             "H:\\Shared drives",
             "H:\\Shared drives\\03 - AKTİF PROJELER",
             "H:\\Shared drives",
-            "H:\\Shared drives\\02 - AKTİF TEKLİFLER"
+            "H:\\Shared drives\\02 - AKTİF TEKLİFLER",
+            "H:\\Shared drives\\03 - AKTİF PROJELER"
         ],
         "column_visibility": {
             "name": true,
@@ -185,9 +186,9 @@
             "combine_and": true
         },
         "column_widths": {
-            "name": 245,
-            "size": 66,
-            "type": 87,
+            "name": 272,
+            "size": 54,
+            "type": 72,
             "date_modified": 99
         },
         "column_width_locked": {
