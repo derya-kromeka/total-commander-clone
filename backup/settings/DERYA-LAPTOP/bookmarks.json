@@ -7,6 +7,12 @@
             "type": "bookmark"
         },
         {
+            "kind": "folder",
+            "name": "Desktop",
+            "path": "C:\\Users\\Derya\\Desktop",
+            "type": "bookmark"
+        },
+        {
             "children": [
                 {
                     "kind": "folder",

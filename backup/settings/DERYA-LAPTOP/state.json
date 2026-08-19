@@ -7,6 +7,12 @@
             "type": "bookmark"
         },
         {
+            "kind": "folder",
+            "name": "Desktop",
+            "path": "C:\\Users\\Derya\\Desktop",
+            "type": "bookmark"
+        },
+        {
             "children": [
                 {
                     "kind": "folder",
@@ -170,7 +176,8 @@
             "H:\\Shared drives\\03 - AKTİF PROJELER",
             "G:\\Shared drives\\10 - SATIŞ",
             "G:\\Shared drives\\10 - SATIŞ\\Türkiye",
-            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Bak Piliç"
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Bak Piliç",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Bak Piliç\\KT-1749 Bak Piliç Bantlı Konveyörler"
         ],
         "column_visibility": {
             "name": true,
@@ -226,7 +233,10 @@
             "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader",
             "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader\\5 - Project Engineering",
             "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader\\5 - Project Engineering\\C1C001241 Bak Pilic shared with Entomak",
-            "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader\\5 - Project Engineering\\C1C001241 Bak Pilic shared with Entomak\\Schemetics"
+            "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader\\5 - Project Engineering\\C1C001241 Bak Pilic shared with Entomak\\Schemetics",
+            "C:\\Users\\Derya\\Downloads",
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\Desktop"
         ],
         "column_visibility": {
             "name": true,
