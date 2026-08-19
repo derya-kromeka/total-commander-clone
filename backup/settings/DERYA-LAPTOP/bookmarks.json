@@ -45,16 +45,23 @@
             "type": "group"
         },
         {
-            "kind": "folder",
-            "name": "(ENTOMAK)",
-            "path": "H:\\Shared drives",
-            "type": "bookmark"
-        },
-        {
-            "kind": "folder",
-            "name": "03 - AKTİF PROJELER",
-            "path": "H:\\Shared drives\\03 - AKTİF PROJELER",
-            "type": "bookmark"
+            "children": [
+                {
+                    "kind": "folder",
+                    "name": "(ENTOMAK)",
+                    "path": "H:\\Shared drives",
+                    "type": "bookmark"
+                },
+                {
+                    "kind": "folder",
+                    "name": "03 - AKTİF PROJELER",
+                    "path": "H:\\Shared drives\\03 - AKTİF PROJELER",
+                    "type": "bookmark"
+                }
+            ],
+            "expanded": false,
+            "name": "Entomak",
+            "type": "group"
         }
     ]
 }
