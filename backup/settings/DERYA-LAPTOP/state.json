@@ -199,7 +199,11 @@
             "G:\\Shared drives\\11 - PROJELER\\2025\\K25044 - Balady Internal Logistics\\10 - TEKLİF ve SATIŞ ÇİZİMİ\\KT-1563 - Balady - Internal Logistics",
             "G:\\Shared drives\\11 - PROJELER\\2025\\K25044 - Balady Internal Logistics\\10 - TEKLİF ve SATIŞ ÇİZİMİ",
             "G:\\Shared drives\\11 - PROJELER\\2025\\K25044 - Balady Internal Logistics",
-            "G:\\Shared drives\\11 - PROJELER\\2025\\K25044 - Balady Internal Logistics\\20 - PROJE YERLEŞİM PLANI ve DİĞER BİLGİLER"
+            "G:\\Shared drives\\11 - PROJELER\\2025\\K25044 - Balady Internal Logistics\\20 - PROJE YERLEŞİM PLANI ve DİĞER BİLGİLER",
+            "G:\\Shared drives\\11 - PROJELER\\2025\\K25044 - Balady Internal Logistics",
+            "G:\\Shared drives\\11 - PROJELER\\2025",
+            "G:\\Shared drives\\11 - PROJELER",
+            "G:\\Shared drives\\11 - PROJELER\\2026"
         ],
         "column_visibility": {
             "name": true,
@@ -224,9 +228,9 @@
             "combine_and": true
         },
         "column_widths": {
-            "name": 230,
-            "size": 80,
-            "type": 80,
+            "name": 327,
+            "size": 78,
+            "type": 78,
             "date_modified": 99
         },
         "column_width_locked": {
