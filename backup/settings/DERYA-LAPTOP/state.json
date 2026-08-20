@@ -1,79 +1,79 @@
 {
     "bookmarks": [
         {
-            "kind": "folder",
+            "type": "bookmark",
             "name": "Downloads",
             "path": "C:\\Users\\Derya\\Downloads",
-            "type": "bookmark"
+            "kind": "folder"
         },
         {
-            "kind": "folder",
+            "type": "bookmark",
             "name": "Desktop",
             "path": "C:\\Users\\Derya\\Desktop",
-            "type": "bookmark"
+            "kind": "folder"
         },
         {
+            "type": "group",
+            "name": "Kromeka",
+            "expanded": true,
             "children": [
                 {
-                    "kind": "folder",
+                    "type": "bookmark",
                     "name": "(KROMEKA)",
                     "path": "G:\\Shared drives",
-                    "type": "bookmark"
+                    "kind": "folder"
                 },
                 {
-                    "kind": "folder",
+                    "type": "bookmark",
                     "name": "10 - SATIŞ",
                     "path": "G:\\Shared drives\\10 - SATIŞ",
-                    "type": "bookmark"
+                    "kind": "folder"
                 }
-            ],
-            "expanded": true,
-            "name": "Kromeka",
-            "type": "group"
+            ]
         },
         {
+            "type": "group",
+            "name": "PARA",
+            "expanded": true,
             "children": [
                 {
-                    "kind": "folder",
+                    "type": "bookmark",
                     "name": "PARA",
                     "path": "C:\\Users\\Derya\\PARA",
-                    "type": "bookmark"
+                    "kind": "folder"
                 },
                 {
-                    "kind": "folder",
+                    "type": "bookmark",
                     "name": "Workshop",
                     "path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
-                    "type": "bookmark"
+                    "kind": "folder"
                 }
-            ],
-            "expanded": true,
-            "name": "PARA",
-            "type": "group"
+            ]
         },
         {
+            "type": "group",
+            "name": "Entomak",
+            "expanded": true,
             "children": [
                 {
-                    "kind": "folder",
+                    "type": "bookmark",
                     "name": "(ENTOMAK)",
                     "path": "H:\\Shared drives",
-                    "type": "bookmark"
+                    "kind": "folder"
                 },
                 {
-                    "kind": "folder",
+                    "type": "bookmark",
                     "name": "02 - AKTİF TEKLİFLER",
                     "path": "H:\\Shared drives\\02 - AKTİF TEKLİFLER",
-                    "type": "bookmark"
+                    "kind": "folder"
                 },
                 {
-                    "kind": "folder",
+                    "type": "bookmark",
                     "name": "03 - AKTİF PROJELER",
                     "path": "H:\\Shared drives\\03 - AKTİF PROJELER",
-                    "type": "bookmark"
+                    "kind": "folder"
                 }
-            ],
-            "expanded": true,
-            "name": "Entomak",
-            "type": "group"
+            ]
         }
     ],
     "libraries": [],
@@ -85,7 +85,7 @@
     },
     "recent_paths": [],
     "left_panel": {
-        "current_path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\chickline-v4-master",
+        "current_path": "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Bak Piliç\\KT-1749 Bak Piliç Bantlı Konveyörler",
         "history": [
             "G:\\",
             "G:\\My Drive",
@@ -202,9 +202,9 @@
             "combine_and": true
         },
         "column_widths": {
-            "name": 293,
-            "size": 59,
-            "type": 63,
+            "name": 283,
+            "size": 56,
+            "type": 59,
             "date_modified": 99
         },
         "column_width_locked": {
@@ -216,7 +216,7 @@
         "locked_column_widths": {}
     },
     "right_panel": {
-        "current_path": "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\candling-on-rust-main",
+        "current_path": "C:\\Users\\Derya\\Desktop",
         "history": [
             "C:\\Users\\Derya\\Downloads",
             "G:\\Shared drives\\10 - SATIŞ",
@@ -236,6 +236,7 @@
             "H:\\Shared drives\\03 - AKTİF PROJELER\\M26001 - Bak Piliç Cutup,Rapid , Line weigher, Feet cutter and unloader\\5 - Project Engineering\\C1C001241 Bak Pilic shared with Entomak\\Schemetics",
             "C:\\Users\\Derya\\Downloads",
             "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\Desktop",
             "C:\\Users\\Derya\\Desktop"
         ],
         "column_visibility": {
@@ -261,9 +262,9 @@
             "combine_and": true
         },
         "column_widths": {
-            "name": 279,
-            "size": 59,
-            "type": 59,
+            "name": 283,
+            "size": 57,
+            "type": 57,
             "date_modified": 99
         },
         "column_width_locked": {
