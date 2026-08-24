@@ -1363,7 +1363,26 @@
             "E:\\Video",
             "E:\\Video\\New folder",
             "E:\\Video\\New folder\\Esr-OT",
-            "C:\\Users\\Derya"
+            "C:\\Users\\Derya",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust\\src",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust\\scripts",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\faceswap-on-rust",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop",
+            "C:\\Users\\Derya\\PARA\\02_Areas\\Workshop\\git-syncher",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia\\Al Marai",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia\\Al Marai\\KT-1952-Third In-Motion W_L Line",
+            "G:\\Shared drives\\10 - SATIŞ\\Kingdom of Saudi Arabia\\Al Marai\\KT-1952-Third In-Motion W_L Line\\Alinan-teklifler",
+            "H:\\Shared drives",
+            "H:\\Shared drives\\90 - ENTOMAK APP",
+            "H:\\Shared drives\\90 - ENTOMAK APP\\test-app",
+            "H:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Spare_Parts",
+            "H:\\Shared drives\\90 - ENTOMAK APP\\test-app",
+            "H:\\Shared drives\\90 - ENTOMAK APP\\test-app\\Database_Backups"
         ],
         "column_visibility": {
             "name": true,
@@ -1388,7 +1407,7 @@
             "combine_and": true
         },
         "column_widths": {
-            "name": 530,
+            "name": 336,
             "size": 86,
             "type": 70,
             "date_modified": 138
