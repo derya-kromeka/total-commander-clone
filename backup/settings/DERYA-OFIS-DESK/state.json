@@ -1426,7 +1426,10 @@
             "E:\\Video",
             "E:\\Video\\New folder",
             "E:\\Video\\New folder\\HTC-OT",
-            "C:\\Users\\Derya"
+            "C:\\Users\\Derya",
+            "G:\\Shared drives\\10 - SATIŞ",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye",
+            "G:\\Shared drives\\10 - SATIŞ\\Türkiye\\Bak Piliç"
         ],
         "column_visibility": {
             "name": true,
@@ -1451,7 +1454,7 @@
             "combine_and": true
         },
         "column_widths": {
-            "name": 336,
+            "name": 450,
             "size": 86,
             "type": 70,
             "date_modified": 138
