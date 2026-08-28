@@ -2,15 +2,15 @@
 Total Commander Clone - Settings Manager
 Handles loading and saving of settings.json and state.json.
 Auto-creates config files with sensible defaults on first run.
-Also writes latest per-computer backups under backup/settings/<host>/
-and schedules a best-effort git upload of those files.
+Also writes latest per-computer backups under the local user-data
+directory (never into Git).
 """
 
 import json
 import os
 from datetime import datetime, timezone
 
-from config_backup import backupConfigAndUpload
+from config_backup import backupConfig
 from app_version import APP_VERSION
 
 
@@ -143,7 +143,7 @@ class SettingsManager:
     # Purpose: Initializes the manager, resolves file paths,
     #          and loads (or creates) both JSON config files.
     # Input:  base_path (str) - Directory where config files live.
-    #         project_root (str|None) - Git/project root for backups.
+    #         project_root (str|None) - Git/project root for updates.
     # --------------------------------------------------------
     def __init__(self, base_path, project_root=None):
         self._base_path = base_path
@@ -354,16 +354,16 @@ class SettingsManager:
     # --------------------------------------------------------
     def saveSettings(self):
         self._writeJson(self._settings_path, self._settings)
-        self._backupConfigToRepo()
+        self._backupConfigLocal()
 
     def saveState(self):
         self._writeJson(self._state_path, self._state)
-        self._backupConfigToRepo()
+        self._backupConfigLocal()
 
     def saveAll(self):
         self._writeJson(self._settings_path, self._settings)
         self._writeJson(self._state_path, self._state)
-        self._backupConfigToRepo()
+        self._backupConfigLocal()
 
     # --------------------------------------------------------
     # Method: buildProfileBundle
@@ -460,19 +460,14 @@ class SettingsManager:
         }
 
     # --------------------------------------------------------
-    # Method: _backupConfigToRepo
-    # Purpose: Write latest backup/settings/<computer>/ files and
-    #          schedule git commit/push (debounced, background).
+    # Method: _backupConfigLocal
+    # Purpose: Write latest per-computer backups under the local
+    #          user-data directory. Does not invoke Git.
     # --------------------------------------------------------
-    def _backupConfigToRepo(self):
+    def _backupConfigLocal(self):
         if not self._backup_enabled:
             return
         try:
-            backupConfigAndUpload(
-                self._settings,
-                self._state,
-                project_root=self._project_root,
-                upload=True,
-            )
+            backupConfig(self._settings, self._state)
         except Exception as e:
             print(f"[SettingsManager] Config backup failed: {e}")

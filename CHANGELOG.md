@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Placeholder for upcoming changes. When you ship, add a dated section below and bump `APP_VERSION` in `app_version.py`.
 
+## [0.4.66] - 2026-08-28
+
+### Changed
+
+- **Settings backups stay local**: Per-computer settings, bookmarks, and libraries are written to `%APPDATA%\TotalCommanderClone\backups\<computer-name>\` (or `~/.config/TotalCommanderClone/backups/` on other platforms). Saving settings no longer commits or pushes to Git. Use Settings export/import to copy a profile between machines.
+
+### Removed
+
+- Generated packaged builds (`dist_build/`), machine-specific `__copycodebase.json`, debug logs, and the old `backup/settings/` copies from Git. Push and pull now sync source, resources, and documentation only.
+
 ## [0.4.65] - 2026-08-10
 
 ### Changed

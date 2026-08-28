@@ -1,6 +1,12 @@
 """
-Config backup: write latest settings/bookmarks/libraries under
-backup/settings/<computer-name>/ and best-effort commit+push to git.
+Config backup: write latest settings/bookmarks/libraries under the
+local user-data directory (never into Git).
+
+Windows: %APPDATA%\\TotalCommanderClone\\backups\\<computer-name>\\
+Other:   ~/.config/TotalCommanderClone/backups/<computer-name>/
+
+Git credential and push helpers in this module are for explicit
+version publishing only, not for settings backups.
 """
 
 from __future__ import annotations
@@ -10,7 +16,6 @@ import os
 import re
 import socket
 import subprocess
-import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
@@ -18,14 +23,9 @@ from typing import Any, Dict, Optional, Tuple
 # ------------------------------------------------------------
 # Constants
 # ------------------------------------------------------------
-BACKUP_ROOT_NAME = "backup"
-BACKUP_SETTINGS_NAME = "settings"
+APP_DATA_DIRNAME = "TotalCommanderClone"
+BACKUP_ROOT_NAME = "backups"
 MANIFEST_FILENAME = "backup_manifest.json"
-
-# Debounce rapid saves (settings + state often write back-to-back).
-_GIT_DEBOUNCE_SEC = 2.5
-_git_timer_lock = threading.Lock()
-_git_timer = None  # type: Optional[threading.Timer]
 
 
 # ------------------------------------------------------------
@@ -78,7 +78,8 @@ def findGitRepoRoot(start_path: str) -> Optional[str]:
 
 # ------------------------------------------------------------
 # Function: resolveBackupRepoRoot
-# Purpose: Prefer an explicit project root, else walk from candidates.
+# Purpose: Locate the Git/project checkout (used by update/publish,
+#          not by settings backups).
 # ------------------------------------------------------------
 def resolveBackupRepoRoot(project_root: Optional[str] = None) -> Optional[str]:
     candidates = []
@@ -103,12 +104,28 @@ def resolveBackupRepoRoot(project_root: Optional[str] = None) -> Optional[str]:
 
 
 # ------------------------------------------------------------
-# Function: getComputerBackupDir
-# Purpose: backup/settings/<computer-name>/ under the repo root.
+# Function: getUserDataDir
+# Purpose: Per-user app data folder (settings backups live here).
 # ------------------------------------------------------------
-def getComputerBackupDir(repo_root: str, computer_name: Optional[str] = None) -> str:
+def getUserDataDir() -> str:
+    if os.name == "nt":
+        base = os.environ.get("APPDATA", os.path.expanduser("~"))
+    else:
+        base = os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, APP_DATA_DIRNAME)
+
+
+# ------------------------------------------------------------
+# Function: getComputerBackupDir
+# Purpose: <user-data>/backups/<computer-name>/ for this PC.
+# ------------------------------------------------------------
+def getComputerBackupDir(
+    user_data_dir: Optional[str] = None,
+    computer_name: Optional[str] = None,
+) -> str:
     host = computer_name or getComputerName()
-    return os.path.join(repo_root, BACKUP_ROOT_NAME, BACKUP_SETTINGS_NAME, host)
+    root = user_data_dir or getUserDataDir()
+    return os.path.join(root, BACKUP_ROOT_NAME, host)
 
 
 # ------------------------------------------------------------
@@ -128,21 +145,18 @@ def _writeJson(path: str, data: Any) -> None:
 
 # ------------------------------------------------------------
 # Function: writeConfigBackup
-# Purpose: Write latest settings/bookmarks/libraries for this PC.
-#          Overwrites previous files in the same computer folder.
+# Purpose: Write latest settings/bookmarks/libraries for this PC
+#          under the local user-data directory. Overwrites previous
+#          files in the same computer folder. Does not touch Git.
 # Output: Absolute backup directory path, or None on failure.
 # ------------------------------------------------------------
 def writeConfigBackup(
     settings: Dict[str, Any],
     state: Dict[str, Any],
-    project_root: Optional[str] = None,
+    user_data_dir: Optional[str] = None,
 ) -> Optional[str]:
-    repo_root = resolveBackupRepoRoot(project_root)
-    if not repo_root:
-        return None
-
     host = getComputerName()
-    backup_dir = getComputerBackupDir(repo_root, host)
+    backup_dir = getComputerBackupDir(user_data_dir, host)
     os.makedirs(backup_dir, exist_ok=True)
 
     # Keep only these latest files (overwrite; remove stray older copies).
@@ -176,7 +190,10 @@ def writeConfigBackup(
         "computer_name": host,
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "files": sorted(payload.keys()),
-        "app_note": "Latest backup only for this computer; overwritten on each save.",
+        "app_note": (
+            "Latest local backup only for this computer; overwritten on each save. "
+            "Not stored in Git. Use Settings export/import to copy a profile."
+        ),
     }
     _writeJson(os.path.join(backup_dir, MANIFEST_FILENAME), manifest)
 
@@ -446,87 +463,17 @@ def runGitPushWithAuth(
 
 
 # ------------------------------------------------------------
-# Function: _runGitPush
-# Purpose: Push HEAD; prefer saved PAT header, else plain git push.
+# Function: backupConfig
+# Purpose: Write latest per-PC backup under the user-data directory.
+#          Does not commit, push, or otherwise invoke Git.
 # ------------------------------------------------------------
-def _runGitPush(repo_root: str) -> bool:
-    ok, _ = runGitPushWithAuth(repo_root)
-    return ok
-
-
-# ------------------------------------------------------------
-# Function: uploadBackupToGit
-# Purpose: Stage backup/settings/<host>/, commit if dirty, push origin.
-#          Non-interactive; uses saved PAT or existing git credentials.
-# ------------------------------------------------------------
-def uploadBackupToGit(backup_dir: str, project_root: Optional[str] = None) -> bool:
-    if not backup_dir or not os.path.isdir(backup_dir):
-        return False
-    repo_root = resolveBackupRepoRoot(project_root) or findGitRepoRoot(backup_dir)
-    if not repo_root or not os.path.isdir(os.path.join(repo_root, ".git")):
-        return False
-
-    rel = os.path.relpath(backup_dir, repo_root).replace("\\", "/")
-    host = os.path.basename(backup_dir.rstrip("\\/"))
-
-    ok, _ = _runGit(repo_root, ["add", "--", rel])
-    if not ok:
-        return False
-
-    ok, status = _runGit(repo_root, ["status", "--porcelain", "--", rel])
-    if not ok:
-        return False
-    if not (status or "").strip():
-        # Nothing new to commit; still try push in case a prior commit is unpushed.
-        return _runGitPush(repo_root)
-
-    msg = f"backup: settings for {host}"
-    ok, _ = _runGit(repo_root, ["commit", "-m", msg])
-    if not ok:
-        return False
-
-    return _runGitPush(repo_root)
-
-
-# ------------------------------------------------------------
-# Function: scheduleBackupGitUpload
-# Purpose: Debounced background git upload after config backup writes.
-# ------------------------------------------------------------
-def scheduleBackupGitUpload(backup_dir: str, project_root: Optional[str] = None) -> None:
-    global _git_timer
-
-    def _job():
-        try:
-            uploadBackupToGit(backup_dir, project_root=project_root)
-        except Exception:
-            pass
-
-    with _git_timer_lock:
-        if _git_timer is not None:
-            try:
-                _git_timer.cancel()
-            except Exception:
-                pass
-        _git_timer = threading.Timer(_GIT_DEBOUNCE_SEC, _job)
-        _git_timer.daemon = True
-        _git_timer.start()
-
-
-# ------------------------------------------------------------
-# Function: backupConfigAndUpload
-# Purpose: Write latest per-PC backup, then schedule git commit/push.
-# ------------------------------------------------------------
-def backupConfigAndUpload(
+def backupConfig(
     settings: Dict[str, Any],
     state: Dict[str, Any],
-    project_root: Optional[str] = None,
-    upload: bool = True,
+    user_data_dir: Optional[str] = None,
 ) -> Optional[str]:
     try:
-        backup_dir = writeConfigBackup(settings, state, project_root=project_root)
+        return writeConfigBackup(settings, state, user_data_dir=user_data_dir)
     except Exception as exc:
         print(f"[ConfigBackup] Write failed: {exc}")
         return None
-    if backup_dir and upload:
-        scheduleBackupGitUpload(backup_dir, project_root=project_root)
-    return backup_dir

@@ -1,6 +1,7 @@
 # PyInstaller / packaging output (regenerated locally)
 build/
 dist/
+dist_build/
 
 # Python
 __pycache__/
@@ -19,8 +20,20 @@ Thumbs.db
 *.swp
 *.swo
 
-# App local config at repo root (dev). Per-PC backups under backup/settings/ ARE tracked.
+# App local config at repo root (dev). Live settings never belong in Git.
 /state.json
 /settings.json
 .git-account.json
 .git-account.pat
+
+# Machine-specific copy destinations (local-only helper script)
+__copycodebase.json
+
+# Runtime logs and scan cache (dev mode may write these at repo root)
+scan_cache/
+*.log
+debug-*.log
+
+# Legacy per-PC backups that used to live in the repo; current backups
+# are under %APPDATA%\TotalCommanderClone\backups\ (never Git).
+backup/settings/

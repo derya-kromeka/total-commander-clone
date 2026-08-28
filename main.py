@@ -160,7 +160,7 @@ def main():
     if icon_path:
         app.setWindowIcon(QIcon(icon_path))
 
-    # Project/git root for per-PC backups under backup/settings/<hostname>/.
+    # Project/git root for update checks and Publish Version.
     # Prefer walking from source/exe so frozen builds in dist\ still find the repo.
     settings_manager = SettingsManager(config_path, project_root=base_path)
 
